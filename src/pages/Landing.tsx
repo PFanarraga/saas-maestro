@@ -21,9 +21,7 @@ export default function Landing() {
       <header className="sticky top-0 z-30 border-b bg-background/80 backdrop-blur">
         <div className="mx-auto max-w-6xl px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <Store className="size-4" />
-            </div>
+            <img src="/logo.png" alt="Shoply Logo" className="size-8 rounded-lg object-cover" />
             <span className="font-bold tracking-tight">Shoply</span>
           </div>
           <nav className="hidden sm:flex items-center gap-6 text-sm text-muted-foreground">
@@ -42,7 +40,6 @@ export default function Landing() {
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 -z-10 bg-[radial-gradient(60%_50%_at_50%_0%,--theme(--color-primary/8%),transparent)]" />
         <div className="mx-auto max-w-6xl px-4 pt-20 pb-16 text-center">
-          <Badge variant="outline" className="mb-4">Plataforma SaaS multi-tienda</Badge>
           <motion.h1
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
