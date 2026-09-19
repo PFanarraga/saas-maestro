@@ -1,9 +1,9 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
-import { Doc, Id } from "./_generated/dataModel";
+import { Doc } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { audit, getAccessContext, requireSuperAdmin } from "./lib/auth";
-import { DEFAULT_HOMEPAGE_BLOCKS, DEFAULT_THEMES, PLAN_PRESETS, TemplateKey } from "./lib/shared";
+import { PLAN_PRESETS } from "./lib/shared";
 
 export const PLATFORM_ROLES = { SUPER_ADMIN: "super_admin" } as const;
 
@@ -44,6 +44,7 @@ export const bootstrap = mutation({
     if (!userId) throw new Error("UNAUTHENTICATED");
     const user = await ctx.db.get(userId);
     if (!user) throw new Error("UNAUTHENTICATED");
+    if (user.isAnonymous) throw new Error("Anonymous users cannot bootstrap the platform");
 
     await seedPlatformDefaults(ctx);
 
@@ -139,150 +140,6 @@ export const setFeatureFlag = mutation({
   },
 });
 
-// ---------------------------------------------------------------------------
-// Tenant CRUD (super admin)
-// ---------------------------------------------------------------------------
-function defaultHomepage(blocks: typeof DEFAULT_HOMEPAGE_BLOCKS) {
-  return blocks.map((b) => ({ ...b, settings: { ...b.settings } }));
-}
-
-export const createTenant = mutation({
-  args: {
-    name: v.string(),
-    slug: v.string(),
-    template: v.string(),
-    planCode: v.string(),
-    adminEmail: v.string(),
-    adminName: v.optional(v.string()),
-    whatsappPhone: v.optional(v.string()),
-    currency: v.optional(v.string()),
-    isDemo: v.optional(v.boolean()),
-  },
-  handler: async (ctx, args) => {
-    const access = await requireSuperAdmin(ctx);
-    const slug = args.slug.toLowerCase().trim();
-    const exists = await ctx.db.query("tenants").withIndex("by_slug", (q) => q.eq("slug", slug)).first();
-    if (exists) throw new Error("El slug ya está en uso");
-
-    const now = Date.now();
-    const tenantId = await ctx.db.insert("tenants", {
-      name: args.name,
-      slug,
-      status: "active",
-      template: args.template,
-      planCode: args.planCode,
-      whatsappPhone: args.whatsappPhone,
-      currency: args.currency ?? "PEN",
-      whatsappEnabled: true,
-      couponsEnabled: true,
-      deliveryEnabled: true,
-      paymentProvider: "manual",
-      isDemo: args.isDemo,
-      createdAt: now,
-    });
-
-    // Theme (draft + published v1 from template preset)
-    const templateKey = (args.template in DEFAULT_THEMES ? args.template : "minimal") as TemplateKey;
-    const theme = { ...DEFAULT_THEMES[templateKey], brand: { ...DEFAULT_THEMES[templateKey].brand, name: args.name } };
-    await ctx.db.insert("tenantThemes", { tenantId, status: "published", version: 1, theme, updatedAt: now, publishedAt: now });
-    await ctx.db.insert("tenantThemes", { tenantId, status: "draft", version: 1, theme, updatedAt: now });
-
-    // Homepage (published v1 with default blocks)
-    await ctx.db.insert("pages", {
-      tenantId,
-      slug: "home",
-      title: "Inicio",
-      isHome: true,
-      status: "published",
-      version: 1,
-      blocks: defaultHomepage(DEFAULT_HOMEPAGE_BLOCKS),
-      updatedAt: now,
-    });
-    await ctx.db.insert("pages", {
-      tenantId,
-      slug: "home",
-      title: "Inicio",
-      isHome: true,
-      status: "draft",
-      version: 1,
-      blocks: defaultHomepage(DEFAULT_HOMEPAGE_BLOCKS),
-      updatedAt: now,
-    });
-
-    // Subdomain + subscription
-    await ctx.db.insert("tenantDomains", { tenantId, domain: `${slug}.shoply.app`, type: "subdomain", status: "active", verifiedAt: now, sslStatus: "active" });
-    await ctx.db.insert("subscriptions", { tenantId, planCode: args.planCode, status: "active", startedAt: now });
-
-    // Owner membership (matched by email at sign-in)
-    await ctx.db.insert("tenantMembers", {
-      tenantId,
-      userEmail: args.adminEmail.toLowerCase().trim(),
-      userName: args.adminName,
-      role: "owner",
-      invitedAt: now,
-    });
-
-    // Starter delivery zone + rate
-    const zoneId = await ctx.db.insert("deliveryZones", { tenantId, name: "Zona A", isActive: true });
-    await ctx.db.insert("deliveryRates", { tenantId, zoneId, name: "Delivery Zona A", method: "delivery", price: 5, isActive: true });
-    await ctx.db.insert("deliveryRates", { tenantId, zoneId, name: "Recojo en tienda", method: "pickup", price: 0, isActive: true });
-
-    await audit(ctx, {
-      actorId: access.userId,
-      actorLabel: access.user.email ?? "super_admin",
-      tenantId,
-      action: "TENANT_CREATED",
-      resource: "tenant",
-      resourceId: tenantId,
-      newData: { name: args.name, slug, planCode: args.planCode, adminEmail: args.adminEmail },
-    });
-    return tenantId;
-  },
-});
-
-export const setTenantStatus = mutation({
-  args: { tenantId: v.id("tenants"), status: v.union(v.literal("active"), v.literal("suspended")), reason: v.optional(v.string()) },
-  handler: async (ctx, { tenantId, status, reason }) => {
-    const access = await requireSuperAdmin(ctx);
-    const tenant = await ctx.db.get(tenantId);
-    if (!tenant) throw new Error("Tenant not found");
-    await ctx.db.patch(tenantId, { status, suspendedReason: status === "suspended" ? reason : undefined });
-    await audit(ctx, {
-      actorId: access.userId,
-      actorLabel: access.user.email ?? "super_admin",
-      tenantId,
-      action: status === "suspended" ? "STORE_SUSPENDED" : "STORE_REACTIVATED",
-      resource: "tenant",
-      resourceId: tenantId,
-      oldData: { status: tenant.status },
-      newData: { status, reason },
-    });
-  },
-});
-
-export const changeTenantPlan = mutation({
-  args: { tenantId: v.id("tenants"), planCode: v.string() },
-  handler: async (ctx, { tenantId, planCode }) => {
-    const access = await requireSuperAdmin(ctx);
-    const tenant = await ctx.db.get(tenantId);
-    if (!tenant) throw new Error("Tenant not found");
-    await ctx.db.patch(tenantId, { planCode });
-    const sub = await ctx.db.query("subscriptions").withIndex("by_tenant", (q) => q.eq("tenantId", tenantId)).first();
-    if (sub) await ctx.db.patch(sub._id, { planCode, status: "active" });
-    else await ctx.db.insert("subscriptions", { tenantId, planCode, status: "active", startedAt: Date.now() });
-    await audit(ctx, {
-      actorId: access.userId,
-      actorLabel: access.user.email ?? "super_admin",
-      tenantId,
-      action: "PLAN_CHANGED",
-      resource: "tenant",
-      resourceId: tenantId,
-      oldData: { planCode: tenant.planCode },
-      newData: { planCode },
-    });
-  },
-});
-
 /** Links a signed-in user to a tenant membership by email (owner invite claim). */
 export const claimMembership = mutation({
   args: {},
@@ -311,6 +168,9 @@ export const claimMembership = mutation({
   },
 });
 
+// ---------------------------------------------------------------------------
+// Global stats (super admin)
+// ---------------------------------------------------------------------------
 export const globalStats = query({
   args: {},
   handler: async (ctx) => {
@@ -318,7 +178,9 @@ export const globalStats = query({
     const tenants = await ctx.db.query("tenants").collect();
     const orders = await ctx.db.query("orders").collect();
     const users = await ctx.db.query("users").collect();
-    const revenue = orders.filter((o) => ["paid", "processing", "ready", "shipped", "delivered"].includes(o.status)).reduce((s, o) => s + o.total, 0);
+    const revenue = orders
+      .filter((o) => ["paid", "processing", "ready", "shipped", "delivered"].includes(o.status))
+      .reduce((s, o) => s + o.total, 0);
     return {
       tenants: tenants.length,
       activeTenants: tenants.filter((t) => t.status === "active").length,
@@ -351,8 +213,3 @@ export const auditLogs = query({
     return logs;
   },
 });
-
-export const tenantIdBySlug = async (ctx: any, slug: string): Promise<Id<"tenants"> | null> => {
-  const t = await ctx.db.query("tenants").withIndex("by_slug", (q: any) => q.eq("slug", slug)).first();
-  return t?._id ?? null;
-};

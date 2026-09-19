@@ -519,7 +519,7 @@ const schema = defineSchema(
       path: v.optional(v.string()),
       value: v.optional(v.number()),
       createdAt: v.number(),
-    }).index("by_tenant_type_time", ["tenantId", "type", "_creationTime"]),
+    }).index("by_tenant_type_time", ["tenantId", "type", "createdAt"]),
 
     auditLogs: defineTable({
       actorId: v.optional(v.id("users")),
@@ -534,8 +534,8 @@ const schema = defineSchema(
       userAgent: v.optional(v.string()),
       createdAt: v.number(),
     })
-      .index("by_tenant_time", ["tenantId", "_creationTime"])
-      .index("by_time", ["_creationTime"]),
+      .index("by_tenant_time", ["tenantId", "createdAt"])
+      .index("by_time", ["createdAt"]),
 
     notificationTemplates: defineTable({
       tenantId: v.id("tenants"),

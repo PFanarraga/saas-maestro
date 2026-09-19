@@ -124,3 +124,48 @@
     cursor: pointer;
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Storefront theme engine scope: stores inject their palette via inline CSS   */
+/* custom properties (--sf-*) on the storefront layout wrapper.                 */
+/* -------------------------------------------------------------------------- */
+.sf-scope {
+  background: var(--sf-bg);
+  color: var(--sf-fg);
+}
+.sf-scope .sf-fg { color: var(--sf-fg); }
+.sf-scope .sf-muted { color: var(--sf-muted-fg); }
+.sf-scope .sf-card { background: var(--sf-card); }
+.sf-scope .sf-hero { background: var(--sf-muted); }
+.sf-scope .sf-banner { background: var(--sf-card); border: 1px solid var(--sf-border); }
+.sf-scope .sf-footer { background: var(--sf-card); color: var(--sf-muted-fg); }
+.sf-scope .sf-announcement { background: var(--sf-primary); color: var(--sf-primary-fg); }
+.sf-scope .sf-header { background: var(--sf-bg); border-color: var(--sf-border); }
+.sf-scope .sf-cta {
+  background: var(--sf-primary);
+  color: var(--sf-primary-fg);
+  border-radius: var(--sf-radius);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.15s ease;
+}
+.sf-scope .sf-cta:hover { opacity: 0.9; }
+.sf-scope .sf-ghost { color: var(--sf-fg); border-radius: var(--sf-radius); display: inline-flex; align-items: center; justify-content: center; }
+.sf-scope .sf-ghost:hover { background: var(--sf-muted); }
+.sf-scope .sf-price { color: var(--sf-primary); }
+.sf-scope .sf-logo-badge { background: var(--sf-primary); color: var(--sf-primary-fg); border-radius: var(--sf-radius); }
+.sf-scope .sf-out { color: #dc2626; }
+.sf-scope .sf-in { color: #16a34a; }
+.sf-scope .sf-img { background: var(--sf-muted); }
+.sf-scope .sf-input { background: var(--sf-bg); color: var(--sf-fg); border-color: var(--sf-border); }
+.sf-scope .sf-input:focus { outline: 2px solid color-mix(in oklab, var(--sf-primary) 60%, transparent); outline-offset: 1px; }
+.sf-scope .sf-iconbtn { background: var(--sf-bg); color: var(--sf-fg); border-color: var(--sf-border); border-radius: calc(var(--sf-radius) - 2px); }
+.sf-scope .sf-chip { background: var(--sf-bg); color: var(--sf-fg); border-color: var(--sf-border); transition: all 0.15s ease; }
+.sf-scope .sf-chip:hover { border-color: var(--sf-primary); }
+.sf-scope .sf-chip-active { background: var(--sf-primary); color: var(--sf-primary-fg); border-color: var(--sf-primary); }
+.sf-scope .sf-rate-active { border-color: var(--sf-primary); box-shadow: 0 0 0 1px var(--sf-primary); }
+.sf-scope .sf-link:hover { color: var(--sf-primary); }
+.sf-scope .sf-hover { transition: box-shadow 0.2s ease, transform 0.2s ease; }
+.sf-scope .sf-hover:hover { box-shadow: 0 8px 24px -8px color-mix(in oklab, var(--sf-primary) 25%, transparent); transform: translateY(-2px); }
+.sf-scope details summary::-webkit-details-marker { display: none; }
