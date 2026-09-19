@@ -16,6 +16,22 @@
 
 <body>
   <div id="root"></div>
+  <script>
+    window.onerror = function(msg, url, line, col, error) {
+      var div = document.createElement('div');
+      div.style.color = 'red';
+      div.style.padding = '20px';
+      div.style.fontSize = '12px';
+      div.style.fontFamily = 'monospace';
+      div.style.background = '#fff';
+      div.style.position = 'fixed';
+      div.style.inset = '0';
+      div.style.zIndex = '9999';
+      div.innerHTML = '<h3>Fatal Error</h3>' + msg + '<br>at ' + url + ':' + line + ':' + col;
+      if (error && error.stack) div.innerHTML += '<pre>' + error.stack + '</pre>';
+      document.body.appendChild(div);
+    };
+  </script>
   <script type="module" src="/src/main.tsx"></script>
 </body>
 

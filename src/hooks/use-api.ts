@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import { useState, useCallback } from 'react';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/api`;
+const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.VITE_SUPABASE_URL ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/api` : '');
 
 export type ApiResponse<T> = {
   data: T | null;
@@ -16,6 +16,9 @@ export function useApi() {
     path: string,
     options: RequestInit = {}
   ): Promise<{ data: T | null; error: string | null }> => {
+    if (!API_BASE_URL) {
+      return { data: null, error: 'API URL not configured' };
+    }
     setIsLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
