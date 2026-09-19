@@ -56,7 +56,7 @@ export default function SuperAdmin() {
   const filtered = useMemo(() => {
     if (!tenants) return [];
     const s = search.toLowerCase();
-    return tenants.filter((t) => t.name.toLowerCase().includes(s) || t.slug.includes(s));
+    return tenants.filter((t: any) => t.name.toLowerCase().includes(s) || t.slug.includes(s));
   }, [tenants, search]);
 
   if (!isSuperAdmin) {
@@ -229,7 +229,7 @@ export default function SuperAdmin() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filtered.map((t) => (
+                    {filtered.map((t: any) => (
                       <TableRow key={t._id}>
                         <TableCell>
                           <div className="flex items-center gap-2">

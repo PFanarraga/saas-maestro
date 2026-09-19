@@ -109,7 +109,7 @@ export default function ThemeEditor() {
 
       <div className="flex items-center gap-2 flex-wrap">
         <Badge variant="outline">Borrador v{draft?.version ?? 1}</Badge>
-        {(versions ?? []).slice(0, 3).map((v) => (
+        {(versions ?? []).slice(0, 3).map((v: any) => (
           <Badge key={v._id} variant="secondary" className="text-[10px]">publicada v{v.version}</Badge>
         ))}
       </div>

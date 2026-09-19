@@ -33,7 +33,7 @@ export default function OrderSuccess() {
               <span className="text-sm font-medium">Estado: {order.statusLabel}</span>
             </div>
             <div className="space-y-1.5">
-              {order.items.map((i, idx) => (
+              {order.items.map((i: any, idx: number) => (
                 <div key={idx} className="flex justify-between text-sm">
                   <span>{i.name}{i.variantLabel ? ` (${i.variantLabel})` : ""} ×{i.quantity}</span>
                   <span>{formatMoney(i.total, order.currency)}</span>

@@ -225,7 +225,7 @@ function AdminDashboardHome() {
         </CardHeader>
         <CardContent className="pt-4">
           <div className="flex flex-wrap items-center gap-2">
-            {data.funnel.map((f, i) => (
+            {data.funnel.map((f: any, i: number) => (
               <div key={f.label} className="flex items-center gap-2">
                 {i > 0 && <span className="text-muted-foreground">→</span>}
                 <div className="rounded-lg border bg-card px-3 py-2 text-center min-w-24">

@@ -72,7 +72,7 @@ export default function AdminDelivery() {
       </div>
 
       <div className="space-y-4">
-        {(data?.zones ?? []).map((zone) => {
+        {(data?.zones ?? []).map((zone: any) => {
           const rates = (data?.rates ?? []).filter((r: any) => r.zoneId === zone._id);
           return (
             <Card key={zone._id}>
@@ -85,7 +85,7 @@ export default function AdminDelivery() {
                   <Button variant="ghost" size="sm" onClick={() => { setRateForm({ id: undefined, zoneId: zone._id, name: "", method: "delivery", price: "5", freeOver: "", eta: "", isActive: true }); setRateOpen(true); }}>
                     <Plus className="size-3.5 mr-1" /> Tarifa
                   </Button>
-                  <Button variant="ghost" size="icon" className="size-8 text-red-600" onClick={() => { if (confirm(`¿Eliminar zona "${zone.name}" y sus tarifas?`)) deleteZone({ id: zone._id }).then(() => toast.success("Zona eliminada")).catch((e) => toast.error(e.message)); }}>
+                  <Button variant="ghost" size="icon" className="size-8 text-red-600" onClick={() => { if (confirm(`¿Eliminar zona "${zone.name}" y sus tarifas?`)) deleteZone({ id: zone._id }).then(() => toast.success("Zona eliminada")).catch((e: any) => toast.error(e.message)); }}>
                     <Trash2 className="size-3.5" />
                   </Button>
                 </div>
