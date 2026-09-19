@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Home, LogOut } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
 import { useNavigate } from "react-router";
 
 export function LogoDropdown() {
