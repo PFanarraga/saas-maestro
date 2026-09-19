@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useState, useEffect } from "react";
 import { useApi } from "./use-api";
 
@@ -9,6 +9,10 @@ export function useAuth() {
   const { request } = useApi();
 
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setIsLoading(false);
+      return;
+    }
     // Check active sessions and sets the user
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -42,15 +46,21 @@ export function useAuth() {
   }
 
   const signIn = async ({ email }: { email: string }) => {
+    if (!isSupabaseConfigured) return { error: new Error("Supabase no está configurado") };
     return await supabase.auth.signInWithOtp({ email });
   };
 
   const verifyOtp = async ({ email, token }: { email: string; token: string }) => {
+    if (!isSupabaseConfigured) return { error: new Error("Supabase no está configurado") };
     return await supabase.auth.verifyOtp({ email, token, type: 'email' });
   };
 
   const signInAnonymous = async () => {
+    if (!isSupabaseConfigured) return { error: new Error("Supabase no está configurado. Revisa las variables de entorno.") };
     // Supabase supports anonymous sign-ins if enabled in the dashboard
+    if (supabase.auth.signInAnonymously === undefined) {
+      return { error: new Error("Metodo signInAnonymously no disponible en el cliente") };
+    }
     return await supabase.auth.signInAnonymously();
   };
 

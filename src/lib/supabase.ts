@@ -7,6 +7,8 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.error('CRITICAL: Supabase credentials missing. The app will not function correctly.');
 }
 
+export const isSupabaseConfigured = !!(supabaseUrl && supabaseAnonKey);
+
 // Default to placeholder to avoid crash on module initialization if env vars are missing
 export const supabase = createClient(
   supabaseUrl || 'https://placeholder-project.supabase.co',
