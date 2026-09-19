@@ -26,8 +26,11 @@ function AuthContent({ redirectAfterAuth = "/start" }: { redirectAfterAuth?: str
     }
   }, [authLoading, isAuthenticated, navigate, returnTo]);
 
+  const apiUrl = import.meta.env.VITE_API_URL || "";
+  const isUrlValid = apiUrl.endsWith("/functions/v1/api");
+
   // Pantalla de error si Supabase no está configurado (problema de variables de entorno)
-  if (!isConfigured && !authLoading) {
+  if ((!isConfigured || !isUrlValid) && !authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
         <Card className="max-w-md w-full border-red-200 shadow-xl shadow-red-900/5">
@@ -36,25 +39,30 @@ function AuthContent({ redirectAfterAuth = "/start" }: { redirectAfterAuth?: str
               <ShieldAlert className="size-8 text-red-600" />
             </div>
             <CardTitle className="text-xl text-red-950 font-bold">Error de Configuración</CardTitle>
-            <CardDescription className="text-red-700/80">
-              La aplicación no detecta las credenciales de Supabase.
+            <CardDescription className="text-red-700/80 text-sm">
+              {!isConfigured
+                ? "La aplicación no detecta las credenciales de Supabase."
+                : "La VITE_API_URL parece estar incompleta o mal configurada."}
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4 text-sm">
-            <div className="bg-red-50 border border-red-100 rounded-lg p-4 text-red-900 space-y-2">
-              <p className="font-semibold">Cómo solucionar esto:</p>
-              <ol className="list-decimal ml-4 space-y-1 opacity-90">
-                <li>Ve al Dashboard de <b>Cloudflare Pages</b>.</li>
-                <li>Entra en <b>Settings &gt; Build & deployments</b>.</li>
-                <li>En <b>Environment variables</b>, agrega <code>VITE_SUPABASE_URL</code> y <code>VITE_SUPABASE_ANON_KEY</code>.</li>
-                <li><b>IMPORTANTE:</b> Ve a la pestaña <b>Deployments</b> y haz clic en <b>"Retry deployment"</b>.</li>
-              </ol>
+          <CardContent className="space-y-4 text-sm text-center">
+            <div className="bg-red-50 border border-red-100 rounded-lg p-4 text-red-900 text-left space-y-2">
+              <p className="font-semibold">Revisa esto en Cloudflare Pages:</p>
+              <ul className="list-disc ml-4 space-y-1 opacity-90 text-[13px]">
+                <li><b>VITE_SUPABASE_URL</b> y <b>VITE_SUPABASE_ANON_KEY</b> deben estar presentes.</li>
+                <li><b>VITE_API_URL</b> debe terminar exactamente en: <br/><code className="bg-white/50 px-1 rounded">/functions/v1/api</code></li>
+              </ul>
             </div>
+            <p className="text-[11px] text-slate-500">
+              Después de guardar, ve a <b>Deployments</b> y haz clic en <b>"Retry deployment"</b> del último build.
+            </p>
           </CardContent>
           <CardFooter>
-            <Button variant="outline" className="w-full" onClick={() => window.location.reload()}>
-              Hecho esto, actualizar página
-            </Button>
+            <div className="w-full space-y-2">
+              <Button className="w-full" onClick={() => window.location.reload()}>
+                Actualizar página
+              </Button>
+            </div>
           </CardFooter>
         </Card>
       </div>
