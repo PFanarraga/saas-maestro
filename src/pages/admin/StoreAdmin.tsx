@@ -37,7 +37,7 @@ export default function StoreAdmin() {
       <header className="border-b bg-background sticky top-0 z-20">
         <div className="h-14 px-4 sm:px-6 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
-            <img src="/logo.png" alt="Shoply Logo" className="size-8 shrink-0 rounded-lg object-cover" />
+            <img src="/logo.png" alt="Shoply Logo" className="size-12 shrink-0 rounded-lg object-cover" />
             <div className="min-w-0">
               <p className="text-sm font-semibold leading-none truncate">{access?.tenantName ?? "Mi tienda"}</p>
               <p className="text-xs text-muted-foreground">Panel de administración</p>

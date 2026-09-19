@@ -32,12 +32,12 @@ export function LogoDropdown() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-10 w-10">
+        <Button variant="ghost" size="icon" className="h-12 w-12">
           <img
             src="/logo.png"
             alt="Shoply Logo"
-            width={32}
-            height={32}
+            width={48}
+            height={48}
             className="rounded-lg object-cover"
           />
         </Button>

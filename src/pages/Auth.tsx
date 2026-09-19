@@ -119,8 +119,8 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                     <img
                       src="/logo.png"
                       alt="Shoply Logo"
-                      width={64}
-                      height={64}
+                      width={96}
+                      height={96}
                       className="rounded-lg mb-4 mt-4 cursor-pointer object-cover"
                       onClick={() => navigate("/")}
                     />

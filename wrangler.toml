@@ -1,7 +1,2 @@
 name = "shoply-saas"
 pages_build_output_dir = "dist"
-
-[vars]
-VITE_SUPABASE_URL = ""
-VITE_SUPABASE_ANON_KEY = ""
-VITE_API_URL = ""

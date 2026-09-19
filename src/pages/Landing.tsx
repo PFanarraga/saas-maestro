@@ -21,7 +21,7 @@ export default function Landing() {
       <header className="sticky top-0 z-30 border-b bg-background/80 backdrop-blur">
         <div className="mx-auto max-w-6xl px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <img src="/logo.png" alt="Shoply Logo" className="size-8 rounded-lg object-cover" />
+            <img src="/logo.png" alt="Shoply Logo" className="size-12 rounded-lg object-cover" />
             <span className="font-bold tracking-tight">Shoply</span>
           </div>
           <nav className="hidden sm:flex items-center gap-6 text-sm text-muted-foreground">
