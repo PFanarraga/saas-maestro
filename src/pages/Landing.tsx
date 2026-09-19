@@ -2,15 +2,13 @@ import { Link } from "react-router";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { motion } from "framer-motion";
-import { ArrowRight, Building2, CheckCircle2, Globe, Layers, MessageCircle, Palette, ShieldCheck, ShoppingCart, Store, Truck } from "lucide-react";
+import { ArrowRight, CheckCircle2, Globe, MessageCircle, Palette, ShieldCheck, ShoppingCart, Store, Layers, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
-const DEMO_SLUGS = ["aurora-tech", "cafe-verduras", "velvet-moda"];
-
 export default function Landing() {
-  const stats = useQuery(api.platform.globalStats);
+  const stats = useQuery(api.storefront.publicStats);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -209,7 +207,7 @@ export default function Landing() {
           </div>
           <div className="flex items-center gap-4">
             <span className="inline-flex items-center gap-1"><Globe className="size-3.5" /> Multi-tenant</span>
-            <span>{stats ? `${stats.tenants} tiendas activas` : "SaaS de comercio"}</span>
+            <span>{stats ? `${stats.activeTenants} tiendas activas` : "SaaS de comercio"}</span>
           </div>
         </div>
       </footer>

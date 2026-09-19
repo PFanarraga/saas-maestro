@@ -105,28 +105,29 @@ export type ProductWithExtras = Doc<"products"> & {
 export const listProducts = query({
   args: {
     tenantId: v.optional(v.id("tenants")),
-    status: v.optional(v.union(v.literal("active"), v.literal("draft"), v.literal("archived"))),
+    status: v.optional(v.union(v.literal("active"), v.literal("draft"), v.literal("archived"), v.literal("all"))),
     search: v.optional(v.string()),
     categoryId: v.optional(v.id("categories")),
-    paginationOpts: v.optional(v.object({ numItems: v.number(), cursor: v.union(v.string(), v.null()) })),
   },
-  handler: async (ctx, { tenantId, status, search, categoryId, paginationOpts }) => {
+  handler: async (ctx, { tenantId, status, search, categoryId }) => {
     const access = await getAccessContext(ctx);
     if (!access) throw new Error("UNAUTHENTICATED");
     const effective = access.isSuperAdmin ? tenantId : access.tenantId;
-    if (!effective) return { page: [], isDone: true, continueCursor: "" };
-    let q = ctx.db.query("products").withIndex("by_tenant_status", (qb) => qb.eq("tenantId", effective).eq("status", status ?? "active"));
-    const page = await (paginationOpts ? q.paginate(paginationOpts) : q.take(500));
-    let items = "page" in page ? page.page : page;
+    if (!effective) return [];
+    let items: Doc<"products">[] =
+      status && status !== "all"
+        ? await ctx.db.query("products").withIndex("by_tenant_status", (q) => q.eq("tenantId", effective).eq("status", status)).collect()
+        : await ctx.db.query("products").withIndex("by_tenant", (q) => q.eq("tenantId", effective)).collect();
     if (search) {
       const s = search.toLowerCase();
       items = items.filter((p) => p.name.toLowerCase().includes(s) || (p.sku ?? "").toLowerCase().includes(s));
     }
     if (categoryId) items = items.filter((p) => p.categoryId === categoryId);
     const catMap = new Map((await ctx.db.query("categories").withIndex("by_tenant", (x) => x.eq("tenantId", effective)).collect()).map((c) => [c._id, c.name]));
-    const withExtras: ProductWithExtras[] = items.map((p) => ({ ...p, categoryName: p.categoryId ? catMap.get(p.categoryId) ?? null : null }));
-    if ("page" in page) return { page: withExtras, isDone: page.isDone, continueCursor: page.continueCursor };
-    return { page: withExtras, isDone: true, continueCursor: "" };
+    const withExtras: ProductWithExtras[] = items
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .map((p) => ({ ...p, categoryName: p.categoryId ? catMap.get(p.categoryId) ?? null : null }));
+    return withExtras;
   },
 });
 

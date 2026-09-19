@@ -265,8 +265,10 @@ export const culqiWebhook = httpAction(async (ctx, request) => {
 export const listPaymentEvents = query({
   args: {},
   handler: async (ctx) => {
-    await requireTenantMember(ctx);
-    return await ctx.db.query("paymentEvents").order("desc").take(100);
+    const access = await requireTenantMember(ctx);
+    if (!access.tenantId) return [];
+    const events = await ctx.db.query("paymentEvents").order("desc").take(200);
+    return events.filter((e) => e.tenantId === access.tenantId);
   },
 });
 

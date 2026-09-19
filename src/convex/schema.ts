@@ -260,6 +260,7 @@ const schema = defineSchema(
       createdAt: v.number(),
       updatedAt: v.number(),
     })
+      .index("by_tenant", ["tenantId"])
       .index("by_tenant_status", ["tenantId", "status"])
       .index("by_tenant_slug", ["tenantId", "slug"])
       .index("by_tenant_featured", ["tenantId", "featured"])

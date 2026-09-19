@@ -29,6 +29,15 @@ export const getTenantBySlug = query({
   },
 });
 
+/** Public platform stats for the landing page (no auth required, no sensitive data). */
+export const publicStats = query({
+  args: {},
+  handler: async (ctx) => {
+    const tenants = await ctx.db.query("tenants").withIndex("by_status", (q) => q.eq("status", "active")).collect();
+    return { activeTenants: tenants.length };
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Public catalog
 // ---------------------------------------------------------------------------

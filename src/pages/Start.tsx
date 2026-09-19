@@ -16,21 +16,12 @@ export default function Start() {
   const claim = useMutation(api.platform.claimMembership);
   const navigate = useNavigate();
 
+  // Bootstrap super admin + claim pending invite (side effects only, no routing).
   useEffect(() => {
-    if (!isAuthenticated) {
-      navigate("/auth?returnTo=%2Fstart", { replace: true });
-      return;
-    }
-    if (!user) return;
+    if (!isAuthenticated || !user) return;
     bootstrap({}).catch(() => undefined);
     claim({}).catch(() => undefined);
-  }, [isAuthenticated, user, bootstrap, claim, navigate]);
-
-  useEffect(() => {
-    if (isLoading || user === undefined || access === undefined) return;
-    if (isSuperAdminFlag) navigate("/admin", { replace: true });
-    else if (access?.tenantId) navigate("/store", { replace: true });
-  });
+  }, [isAuthenticated, user, bootstrap, claim]);
 
   if (isLoading || user === undefined || access === undefined) {
     return (
@@ -40,10 +31,10 @@ export default function Start() {
     );
   }
 
-  const isSuperAdminFlag = user?.platformRole === "super_admin";
+  const isSuperAdmin = user?.platformRole === "super_admin";
   const hasTenant = !!access?.tenantId;
 
-  if (isSuperAdminFlag) {
+  if (isSuperAdmin) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-background px-4">
         <Card className="w-full max-w-sm text-center">

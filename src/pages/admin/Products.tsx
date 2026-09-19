@@ -55,7 +55,7 @@ export default function AdminProducts() {
   const [form, setForm] = useState(emptyForm);
 
   const filtered = useMemo(() => {
-    let items = (products?.page ?? []) as Product[];
+    let items = (products ?? []) as Product[];
     const s = search.toLowerCase();
     if (s) items = items.filter((p) => p.name.toLowerCase().includes(s) || (p.sku ?? "").toLowerCase().includes(s));
     if (statusFilter !== "all") items = items.filter((p) => p.status === statusFilter);
