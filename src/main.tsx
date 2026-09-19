@@ -187,12 +187,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 function AdminDashboardHome() {
   const { request, isLoading } = useApi();
   const [data, setData] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    request<any>("/analytics/dashboard").then(({ data }) => setData(data));
+    request<any>("/analytics/dashboard").then((res) => {
+      if (res.error) setError(res.error);
+      else setData(res.data);
+    });
   }, [request]);
 
-  if (isLoading || !data) return <div className="p-8 text-sm text-muted-foreground">Cargando…</div>;
+  if (isLoading) return <div className="p-8 text-sm text-muted-foreground">Cargando…</div>;
+  if (error) return <div className="p-8 text-sm text-red-500">Error: {error}</div>;
+  if (!data) return <div className="p-8 text-sm text-muted-foreground">No hay datos disponibles.</div>;
   const kpis = [
     { label: "Ingresos (total)", value: `S/ ${data.kpis.revenue.toFixed(2)}` },
     { label: "Pedidos", value: String(data.kpis.orders) },
