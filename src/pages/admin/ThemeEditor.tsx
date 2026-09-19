@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useApi } from "@/hooks/use-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,15 +32,23 @@ const DEFAULT_THEME: ThemeConfig = {
 };
 
 export default function ThemeEditor() {
-  const draft = useQuery(api.store.getThemeDraft);
-  const versions = useQuery(api.store.themeVersions);
-  const access = useQuery(api.platform.myAccess);
-  const saveDraft = useMutation(api.store.saveThemeDraft);
-  const publish = useMutation(api.store.publishTheme);
-  const applyTemplate = useMutation(api.store.applyTemplate);
+  const { request } = useApi();
+  const [draft, setDraft] = useState<any>(null);
+  const [versions, setVersions] = useState<any[] | null>(null);
+  const [access, setAccess] = useState<any>(null);
 
   const [theme, setTheme] = useState<ThemeConfig>(DEFAULT_THEME);
   const [loaded, setLoaded] = useState(false);
+
+  const refreshData = async () => {
+    request<any>("/store/theme-draft").then(({ data }) => setDraft(data));
+    request<any[]>("/store/theme-versions").then(({ data }) => setVersions(data));
+    request<any>("/me/access").then(({ data }) => setAccess(data));
+  };
+
+  useEffect(() => {
+    refreshData();
+  }, [request]);
 
   useEffect(() => {
     if (draft && !loaded) {
@@ -55,25 +62,30 @@ export default function ThemeEditor() {
 
   const handleSave = async () => {
     try {
-      await saveDraft({ theme });
+      const { error } = await request("/store/theme-draft", { method: "POST", body: JSON.stringify({ theme }) });
+      if (error) throw new Error(error);
       toast.success("Borrador guardado");
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Error"); }
+      refreshData();
+    } catch (e: any) { toast.error(e.message || "Error"); }
   };
 
   const handlePublish = async () => {
     try {
-      await saveDraft({ theme });
-      const v = await publish({});
-      toast.success(`Tema publicado (v${v})`);
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Error"); }
+      await request("/store/theme-draft", { method: "POST", body: JSON.stringify({ theme }) });
+      const { data, error } = await request<any>("/store/theme/publish", { method: "POST" });
+      if (error) throw new Error(error);
+      toast.success(`Tema publicado (v${data})`);
+      refreshData();
+    } catch (e: any) { toast.error(e.message || "Error"); }
   };
 
   const handleTemplate = async (tpl: string) => {
     try {
-      await applyTemplate({ template: tpl });
+      const { error } = await request("/store/theme/apply-template", { method: "POST", body: JSON.stringify({ template: tpl }) });
+      if (error) throw new Error(error);
       toast.success(`Plantilla "${tpl}" aplicada al borrador`);
       setTimeout(() => window.location.reload(), 600);
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Error"); }
+    } catch (e: any) { toast.error(e.message || "Error"); }
   };
 
   const c = theme.colors;
@@ -110,7 +122,7 @@ export default function ThemeEditor() {
       <div className="flex items-center gap-2 flex-wrap">
         <Badge variant="outline">Borrador v{draft?.version ?? 1}</Badge>
         {(versions ?? []).slice(0, 3).map((v: any) => (
-          <Badge key={v._id} variant="secondary" className="text-[10px]">publicada v{v.version}</Badge>
+          <Badge key={v.id} variant="secondary" className="text-[10px]">publicada v{v.version}</Badge>
         ))}
       </div>
 

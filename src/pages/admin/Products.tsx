@@ -1,6 +1,5 @@
-import { useMemo, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useMemo, useState, useEffect } from "react";
+import { useApi } from "@/hooks/use-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,10 +13,9 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { formatMoney } from "@/lib/utils-shared";
-import { Id } from "@/convex/_generated/dataModel";
 
 type Product = {
-  _id: Id<"products">;
+  id: string;
   name: string;
   sku?: string;
   price: number;
@@ -26,10 +24,11 @@ type Product = {
   status: string;
   featured: boolean;
   categoryName?: string | null;
+  categoryId?: string | null;
 };
 
 const emptyForm = {
-  id: undefined as Id<"products"> | undefined,
+  id: undefined as string | undefined,
   name: "",
   sku: "",
   price: "",
@@ -44,10 +43,18 @@ const emptyForm = {
 };
 
 export default function AdminProducts() {
-  const products = useQuery(api.catalog.listProducts, {});
-  const categories = useQuery(api.catalog.listCategories, {});
-  const save = useMutation(api.catalog.saveProduct);
-  const remove = useMutation(api.catalog.deleteProduct);
+  const { request } = useApi();
+  const [products, setProducts] = useState<Product[] | null>(null);
+  const [categories, setCategories] = useState<any[] | null>(null);
+
+  useEffect(() => {
+    refreshData();
+  }, []);
+
+  const refreshData = async () => {
+    request<Product[]>("/catalog/products").then(({ data }) => setProducts(data));
+    request<any[]>("/catalog/categories").then(({ data }) => setCategories(data));
+  };
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -65,7 +72,7 @@ export default function AdminProducts() {
   const openNew = () => { setForm(emptyForm); setOpen(true); };
   const openEdit = (p: Product) => {
     setForm({
-      id: p._id,
+      id: p.id,
       name: p.name,
       sku: p.sku ?? "",
       price: String(p.price),
@@ -74,7 +81,7 @@ export default function AdminProducts() {
       stock: String(p.stock),
       status: p.status as any,
       featured: p.featured,
-      categoryId: (p as any).categoryId ?? "",
+      categoryId: p.categoryId ?? "",
       shortDescription: "",
       description: "",
     });
@@ -88,16 +95,36 @@ export default function AdminProducts() {
         toast.error("Nombre y precio válido son obligatorios");
         return;
       }
-      await save({
-        id: form.id,
-        name: form.name,
-        sku: form.sku || undefined,
-        price,
-        comparePrice: form.comparePrice ? parseFloat(form.comparePrice) : undefined,
-        cost: form.cost ? parseFloat(form.cost) : undefined,
-        stock: parseInt(form.stock || "0", 10),
-        status: form.status,
-        featured: form.featured,
+      const { error } = await request("/catalog/products", {
+        method: "POST",
+        body: JSON.stringify({
+          id: form.id,
+          name: form.name,
+          sku: form.sku || undefined,
+          price,
+          comparePrice: form.comparePrice ? parseFloat(form.comparePrice) : undefined,
+          cost: form.cost ? parseFloat(form.cost) : undefined,
+          stock: parseInt(form.stock || "0", 10),
+          status: form.status,
+          featured: form.featured,
+          categoryId: form.categoryId || undefined,
+        })
+      });
+      if (error) throw new Error(error);
+      toast.success(form.id ? "Producto actualizado" : "Producto creado");
+      setOpen(false);
+      refreshData();
+    } catch (e: any) {
+      toast.error(e.message || "Error al guardar");
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("¿Eliminar este producto?")) return;
+    const { error } = await request(`/catalog/products/${id}`, { method: "DELETE" });
+    if (error) toast.error(error);
+    else { toast.success("Producto eliminado"); refreshData(); }
+  };
         categoryId: form.categoryId ? (form.categoryId as Id<"categories">) : undefined,
         shortDescription: form.shortDescription || undefined,
         description: form.description || undefined,
@@ -147,7 +174,7 @@ export default function AdminProducts() {
             </TableHeader>
             <TableBody>
               {filtered.map((p) => (
-                <TableRow key={p._id}>
+                <TableRow key={p.id}>
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <div>
@@ -173,7 +200,7 @@ export default function AdminProducts() {
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
                       <Button variant="ghost" size="icon" className="size-8" onClick={() => openEdit(p)}><Pencil className="size-3.5" /></Button>
-                      <Button variant="ghost" size="icon" className="size-8 text-red-600" onClick={() => { if (confirm(`¿Eliminar "${p.name}"?`)) remove({ id: p._id }).then(() => toast.success("Eliminado")).catch((e) => toast.error(e.message)); }}><Trash2 className="size-3.5" /></Button>
+                      <Button variant="ghost" size="icon" className="size-8 text-red-600" onClick={() => handleDelete(p.id)}><Trash2 className="size-3.5" /></Button>
                     </div>
                   </TableCell>
                 </TableRow>

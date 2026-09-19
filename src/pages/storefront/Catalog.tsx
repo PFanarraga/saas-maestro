@@ -1,19 +1,30 @@
-import { useMemo } from "react";
+import { useMemo, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "react-router";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useApi } from "@/hooks/use-api";
 import { SearchX } from "lucide-react";
 import { ProductCard } from "./Home";
 
 export default function StoreCatalog() {
   const { slug } = useParams<{ slug: string }>();
+  const { request } = useApi();
   const [searchParams, setSearchParams] = useSearchParams();
   const category = searchParams.get("category") ?? undefined;
   const search = searchParams.get("q") ?? undefined;
 
-  const products = useQuery(api.storefront.listPublicProducts, slug ? { slug, categorySlug: category, search } : "skip");
-  const categories = useQuery(api.catalog.listPublicCategories, slug ? { slug } : "skip");
-  const tenant = useQuery(api.storefront.getTenantBySlug, slug ? { slug } : "skip");
+  const [products, setProducts] = useState<any[] | null>(null);
+  const [categories, setCategories] = useState<any[] | null>(null);
+  const [tenant, setTenant] = useState<any>(null);
+
+  useEffect(() => {
+    if (!slug) return;
+    const prodParams = new URLSearchParams();
+    if (category) prodParams.set("category", category);
+    if (search) prodParams.set("search", search);
+
+    request<any[]>(`/public/tenants/${slug}/products?${prodParams.toString()}`).then(({ data }) => setProducts(data));
+    request<any[]>(`/public/tenants/${slug}/categories`).then(({ data }) => setCategories(data));
+    request<any>(`/public/tenants/${slug}`).then(({ data }) => setTenant(data));
+  }, [slug, category, search, request]);
 
   const roots = useMemo(() => (categories ?? []).filter((c: any) => !c.parentId), [categories]);
   const currency = tenant?.currency ?? "PEN";
@@ -30,7 +41,7 @@ export default function StoreCatalog() {
         </button>
         {roots.map((c: any) => (
           <button
-            key={c._id}
+            key={c.id}
             onClick={() => setSearchParams({ category: c.slug })}
             className={`sf-chip rounded-full border px-3 py-1.5 text-xs ${category === c.slug ? "sf-chip-active" : ""}`}
           >
@@ -46,7 +57,7 @@ export default function StoreCatalog() {
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
-          {(products ?? []).map((p: any) => <ProductCard key={p._id} product={p} slug={slug!} currency={currency} />)}
+          {(products ?? []).map((p: any) => <ProductCard key={p.id} product={p} slug={slug!} currency={currency} />)}
         </div>
       )}
     </div>

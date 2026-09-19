@@ -2,9 +2,7 @@ import '@vly-ai/integrations';
 import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
-import { ConvexAuthProvider } from "@convex-dev/auth/react";
-import { ConvexReactClient } from "convex/react";
-import React, { StrictMode, useEffect, lazy, Suspense } from "react";
+import React, { StrictMode, useEffect, useState, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 import "./index.css";
@@ -99,8 +97,6 @@ class RootErrorBoundary extends React.Component<
   }
 }
 
-const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
-
 function RouteSyncer() {
   const location = useLocation();
   useEffect(() => {
@@ -130,70 +126,73 @@ createRoot(document.getElementById("root")!).render(
       <ToolbarErrorBoundary>
         <VlyToolbar />
       </ToolbarErrorBoundary>
-      <ConvexAuthProvider client={convex}>
-        <BrowserRouter>
-          <RouteSyncer />
-          <Suspense fallback={<RouteLoading />}>
-            <Routes>
-              <Route path="/" element={<Landing />} />
-              <Route path="/auth" element={<AuthPage redirectAfterAuth="/start" />} />
-              <Route path="/start" element={<Start />} />
+      <BrowserRouter>
+        <RouteSyncer />
+        <Suspense fallback={<RouteLoading />}>
+          <Routes>
+            <Route path="/" element={<Landing />} />
+            <Route path="/auth" element={<AuthPage redirectAfterAuth="/start" />} />
+            <Route path="/start" element={<Start />} />
 
-              {/* Super Admin */}
-              <Route
-                path="/admin"
-                element={
-                  <RequireAuth>
-                    <SuperAdmin />
-                  </RequireAuth>
-                }
-              />
+            {/* Super Admin */}
+            <Route
+              path="/admin"
+              element={
+                <RequireAuth>
+                  <SuperAdmin />
+                </RequireAuth>
+              }
+            />
 
-              {/* Store Admin */}
-              <Route path="/store" element={<RequireAuth><StoreAdmin /></RequireAuth>}>
-                <Route index element={<AdminDashboardHome />} />
-                <Route path="products" element={<AdminProducts />} />
-                <Route path="categories" element={<AdminCategories />} />
-                <Route path="orders" element={<AdminOrders />} />
-                <Route path="customers" element={<AdminCustomers />} />
-                <Route path="delivery" element={<AdminDelivery />} />
-                <Route path="coupons" element={<AdminCoupons />} />
-                <Route path="theme" element={<AdminTheme />} />
-                <Route path="pages" element={<AdminPages />} />
-                <Route path="settings" element={<AdminSettings />} />
-              </Route>
+            {/* Store Admin */}
+            <Route path="/store" element={<RequireAuth><StoreAdmin /></RequireAuth>}>
+              <Route index element={<AdminDashboardHome />} />
+              <Route path="products" element={<AdminProducts />} />
+              <Route path="categories" element={<AdminCategories />} />
+              <Route path="orders" element={<AdminOrders />} />
+              <Route path="customers" element={<AdminCustomers />} />
+              <Route path="delivery" element={<AdminDelivery />} />
+              <Route path="coupons" element={<AdminCoupons />} />
+              <Route path="theme" element={<AdminTheme />} />
+              <Route path="pages" element={<AdminPages />} />
+              <Route path="settings" element={<AdminSettings />} />
+            </Route>
 
-              {/* Storefront */}
-              <Route path="/t/:slug" element={<Storefront />}>
-                <Route index element={<StoreHome />} />
-                <Route path="products" element={<StoreCatalog />} />
-                <Route path="product/:productSlug" element={<StoreProduct />} />
-                <Route path="cart" element={<StoreCart />} />
-                <Route path="checkout" element={<StoreCheckout />} />
-                <Route path="order-success" element={<OrderSuccess />} />
-              </Route>
+            {/* Storefront */}
+            <Route path="/t/:slug" element={<Storefront />}>
+              <Route index element={<StoreHome />} />
+              <Route path="products" element={<StoreCatalog />} />
+              <Route path="product/:productSlug" element={<StoreProduct />} />
+              <Route path="cart" element={<StoreCart />} />
+              <Route path="checkout" element={<StoreCheckout />} />
+              <Route path="order-success" element={<OrderSuccess />} />
+            </Route>
 
-              {/* Hosted payment page */}
-              <Route path="/pay/:token" element={<PayPage />} />
+            {/* Hosted payment page */}
+            <Route path="/pay/:token" element={<PayPage />} />
 
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Suspense>
-        </BrowserRouter>
-        <Toaster />
-      </ConvexAuthProvider>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
+      </BrowserRouter>
+      <Toaster />
     </RootErrorBoundary>
   </StrictMode>,
 );
 
 // Small inline dashboard home so the index route stays cheap
-import { useQuery } from "convex/react";
-import { api } from "./convex/_generated/api";
+import { useApi } from "./hooks/use-api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 function AdminDashboardHome() {
-  const data = useQuery(api.analytics.storeDashboard);
-  if (!data) return <div className="p-8 text-sm text-muted-foreground">Cargando…</div>;
+  const { request, isLoading } = useApi();
+  const [data, setData] = useState<any>(null);
+
+  useEffect(() => {
+    request<any>("/analytics/dashboard").then(({ data }) => setData(data));
+  }, [request]);
+
+  if (isLoading || !data) return <div className="p-8 text-sm text-muted-foreground">Cargando…</div>;
   const kpis = [
     { label: "Ingresos (total)", value: `S/ ${data.kpis.revenue.toFixed(2)}` },
     { label: "Pedidos", value: String(data.kpis.orders) },

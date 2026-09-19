@@ -1,7 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Link, useNavigate, useParams } from "react-router";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useApi } from "@/hooks/use-api";
 import { toast } from "sonner";
 import { ArrowLeft, MessageCircle, ShoppingBag } from "lucide-react";
 import { buildProductInquiryMessage, formatMoney, whatsappLink } from "@/lib/utils-shared";
@@ -9,17 +8,30 @@ import { useStoreSession } from "./Storefront";
 
 export default function StoreProduct() {
   const { slug, productSlug } = useParams<{ slug: string; productSlug: string }>();
-  const product = useQuery(api.storefront.getPublicProduct, slug && productSlug ? { slug, productSlug } : "skip");
-  const tenant = useQuery(api.storefront.getTenantBySlug, slug ? { slug } : "skip");
-  const track = useMutation(api.storefront.trackEvent);
-  const addToCart = useMutation(api.cart.addToCart);
+  const { request } = useApi();
   const navigate = useNavigate();
   const sessionKey = useStoreSession(slug);
 
+  const [product, setProduct] = useState<any>(undefined);
+  const [tenant, setTenant] = useState<any>(null);
   const [selection, setSelection] = useState<Record<string, string>>({});
   const [adding, setAdding] = useState(false);
 
-  const trackedId = product?._id;
+  useEffect(() => {
+    if (!slug || !productSlug) return;
+    request<any>(`/public/tenants/${slug}/products/${productSlug}`).then(({ data }) => setProduct(data));
+    request<any>(`/public/tenants/${slug}`).then(({ data }) => setTenant(data));
+  }, [slug, productSlug, request]);
+
+  useEffect(() => {
+    if (slug && product?.id) {
+      request(`/public/tenants/${slug}/events`, {
+        method: "POST",
+        body: JSON.stringify({ type: "product_view", productId: product.id, sessionId: sessionKey })
+      }).catch(() => undefined);
+    }
+  }, [slug, product?.id, sessionKey, request]);
+
   const currency = tenant?.currency ?? "PEN";
 
   const selectedVariant = useMemo(() => {
@@ -38,12 +50,21 @@ export default function StoreProduct() {
     }
     setAdding(true);
     try {
-      await addToCart({ slug: slug!, sessionKey, productId: product._id, variantId: selectedVariant?._id, quantity: 1 });
-      await track({ slug: slug!, type: "add_to_cart", productId: product._id, value: price }).catch(() => undefined);
+      const { error } = await request("/cart/items", {
+        method: "POST",
+        body: JSON.stringify({ slug: slug!, sessionKey, productId: product.id, variantId: selectedVariant?.id, quantity: 1 })
+      });
+      if (error) throw new Error(error);
+
+      await request(`/public/tenants/${slug}/events`, {
+        method: "POST",
+        body: JSON.stringify({ type: "add_to_cart", productId: product.id, value: price, sessionId: sessionKey })
+      }).catch(() => undefined);
+
       toast.success("Agregado al carrito");
       if (goToCart) navigate(`/t/${slug}/cart`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "No se pudo agregar");
+    } catch (e: any) {
+      toast.error(e.message || "No se pudo agregar");
     } finally {
       setAdding(false);
     }

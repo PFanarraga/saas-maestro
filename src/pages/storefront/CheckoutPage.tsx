@@ -1,22 +1,21 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useApi } from "@/hooks/use-api";
 import { toast } from "sonner";
 import { Loader2, Lock } from "lucide-react";
 import { formatMoney } from "@/lib/utils-shared";
 import { useStoreSession } from "./Storefront";
-import { Id } from "@/convex/_generated/dataModel";
 
 export default function StoreCheckout() {
   const { slug } = useParams<{ slug: string }>();
+  const { request } = useApi();
   const sessionKey = useStoreSession(slug);
   const navigate = useNavigate();
 
-  const cart = useQuery(api.cart.getCart, slug ? { slug, sessionKey } : "skip");
-  const tenant = useQuery(api.storefront.getTenantBySlug, slug ? { slug } : "skip");
-  const rates = useQuery(api.store.listPublicDeliveryRates, slug ? { slug } : "skip");
-  const checkout = useMutation(api.orders.checkout);
+  const [cart, setCart] = useState<any>(null);
+  const [tenant, setTenant] = useState<any>(null);
+  const [rates, setRates] = useState<any[] | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [form, setForm] = useState({ name: "", phone: "", email: "", address: "", city: "", reference: "", notes: "" });
   const [rateId, setRateId] = useState<string>("");
@@ -24,13 +23,29 @@ export default function StoreCheckout() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
+    if (!slug) return;
+    async function fetchData() {
+      const [cartRes, tenantRes, ratesRes] = await Promise.all([
+        request<any>(`/cart?slug=${slug}&sessionKey=${sessionKey}`),
+        request<any>(`/public/tenants/${slug}`),
+        request<any[]>(`/public/tenants/${slug}/delivery-rates`)
+      ]);
+      setCart(cartRes.data);
+      setTenant(tenantRes.data);
+      setRates(ratesRes.data);
+      setIsLoading(false);
+    }
+    fetchData();
+  }, [slug, sessionKey, request]);
+
+  useEffect(() => {
     if (rates && rates.length > 0 && !rateId) {
       const pickup = rates.find((r: any) => r.method === "pickup");
-      setRateId((pickup ?? rates[0])._id);
+      setRateId((pickup ?? rates[0]).id);
     }
   }, [rates, rateId]);
 
-  if (!cart) return <div className="min-h-[50vh]" />;
+  if (isLoading || !cart) return <div className="min-h-[50vh]" />;
   if (cart.items.length === 0) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-16 text-center sf-fg">
@@ -39,7 +54,7 @@ export default function StoreCheckout() {
     );
   }
 
-  const selectedRate = (rates ?? []).find((r: any) => r._id === rateId);
+  const selectedRate = (rates ?? []).find((r: any) => r.id === rateId);
   const needsAddress = selectedRate && selectedRate.method !== "pickup";
   // Client-side preview of totals; final values are computed server-side.
   const discountPreview = 0;
@@ -59,24 +74,28 @@ export default function StoreCheckout() {
     setSubmitting(true);
     try {
       const idempotencyKey = `${sessionKey}-${Date.now()}`;
-      const res = await checkout({
-        slug: slug!,
-        sessionKey,
-        customerName: form.name,
-        customerPhone: form.phone,
-        customerEmail: form.email || undefined,
-        deliveryRateId: rateId ? (rateId as Id<"deliveryRates">) : undefined,
-        addressLine1: form.address || undefined,
-        addressCity: form.city || undefined,
-        addressReference: form.reference || undefined,
-        notes: form.notes || undefined,
-        couponCode: coupon || undefined,
-        idempotencyKey,
+      const { data, error } = await request<any>("/checkout", {
+        method: "POST",
+        body: JSON.stringify({
+          slug: slug!,
+          sessionKey,
+          customerName: form.name,
+          customerPhone: form.phone,
+          customerEmail: form.email || undefined,
+          deliveryRateId: rateId || undefined,
+          addressLine1: form.address || undefined,
+          addressCity: form.city || undefined,
+          addressReference: form.reference || undefined,
+          notes: form.notes || undefined,
+          couponCode: coupon || undefined,
+          idempotencyKey,
+        })
       });
-      toast.success(`¡Pedido #${res.orderNumber} creado!`);
-      navigate(`/t/${slug}/order-success?number=${res.orderNumber}&phone=${encodeURIComponent(form.phone)}`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Error al procesar el pedido");
+      if (error || !data) throw new Error(error || "Error al procesar el pedido");
+      toast.success(`¡Pedido #${data.orderNumber} creado!`);
+      navigate(`/t/${slug}/order-success?number=${data.orderNumber}&phone=${encodeURIComponent(form.phone)}`);
+    } catch (err: any) {
+      toast.error(err.message || "Error al procesar el pedido");
     } finally {
       setSubmitting(false);
     }
@@ -103,9 +122,9 @@ export default function StoreCheckout() {
             {(rates ?? []).length === 0 && <p className="sf-muted text-sm">Esta tienda no tiene métodos de entrega configurados.</p>}
             <div className="space-y-2">
               {(rates ?? []).map((r: any) => (
-                <label key={r._id} className={`flex items-center justify-between rounded-[var(--sf-radius)] border p-3 cursor-pointer ${rateId === r._id ? "sf-rate-active" : ""}`}>
+                <label key={r.id} className={`flex items-center justify-between rounded-[var(--sf-radius)] border p-3 cursor-pointer ${rateId === r.id ? "sf-rate-active" : ""}`}>
                   <div className="flex items-center gap-2.5">
-                    <input type="radio" name="rate" checked={rateId === r._id} onChange={() => setRateId(r._id)} className="accent-[var(--sf-primary)]" />
+                    <input type="radio" name="rate" checked={rateId === r.id} onChange={() => setRateId(r.id)} className="accent-[var(--sf-primary)]" />
                     <div>
                       <p className="text-sm font-medium">{r.name}</p>
                       <p className="sf-muted text-xs">{r.zoneName}{r.eta ? ` · ${r.eta}` : ""}</p>
@@ -144,7 +163,7 @@ export default function StoreCheckout() {
           <p className="font-semibold text-sm">Resumen del pedido</p>
           <div className="space-y-2 max-h-56 overflow-y-auto">
             {cart.items.map((i: any) => (
-              <div key={i._id} className="flex justify-between text-sm gap-2">
+              <div key={i.id} className="flex justify-between text-sm gap-2">
                 <span className="min-w-0 truncate">{i.name}{i.variantLabel ? ` (${i.variantLabel})` : ""} ×{i.quantity}</span>
                 <span className="shrink-0">{formatMoney(i.unitPrice * i.quantity, cart.currency)}</span>
               </div>

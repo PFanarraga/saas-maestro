@@ -1,7 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link, Outlet, useLocation, useParams } from "react-router";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useApi } from "@/hooks/use-api";
 import { ShoppingBag, MessageCircle } from "lucide-react";
 import { formatMoney, whatsappLink, type ThemeConfig } from "@/lib/utils-shared";
 
@@ -19,14 +18,31 @@ export function useStoreSession(slug?: string) {
 
 export default function Storefront() {
   const { slug } = useParams<{ slug: string }>();
-  const tenant = useQuery(api.storefront.getTenantBySlug, slug ? { slug } : "skip");
-  const themeData = useQuery(api.store.getPublishedTheme, slug ? { slug } : "skip");
-  const track = useMutation(api.storefront.trackEvent);
+  const { request } = useApi();
+  const [tenant, setTenant] = useState<any>(undefined);
+  const [themeData, setThemeData] = useState<any>(null);
+  const [cart, setCart] = useState<any>(null);
   const location = useLocation();
 
   useEffect(() => {
-    if (slug) track({ slug, type: "page_view" }).catch(() => undefined);
-  }, [slug, location.pathname, track]);
+    if (!slug) return;
+    request<any>(`/public/tenants/${slug}`).then(({ data }) => setTenant(data));
+    request<any>(`/public/tenants/${slug}/theme`).then(({ data }) => setThemeData(data));
+  }, [slug, request]);
+
+  const sessionKey = useStoreSession(slug);
+
+  useEffect(() => {
+    if (!slug) return;
+    request<any>(`/cart?slug=${slug}&sessionKey=${sessionKey}`).then(({ data }) => setCart(data));
+  }, [slug, sessionKey, request, location.pathname]);
+
+  useEffect(() => {
+    if (slug) request(`/public/tenants/${slug}/events`, {
+      method: "POST",
+      body: JSON.stringify({ type: "page_view", path: location.pathname, sessionId: sessionKey })
+    }).catch(() => undefined);
+  }, [slug, location.pathname, sessionKey, request]);
 
   const theme = (themeData?.theme ?? null) as ThemeConfig | null;
   const c = theme?.colors ?? {};

@@ -1,7 +1,6 @@
-import { useMemo, useState } from "react";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useMemo, useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
+import { useApi } from "@/hooks/use-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,7 +23,7 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 type Tenant = {
-  _id: string;
+  id: string;
   name: string;
   slug: string;
   status: string;
@@ -32,31 +31,41 @@ type Tenant = {
   whatsappPhone?: string;
   isDemo?: boolean;
   createdAt: number;
-  _creationTime: number;
 };
 
 export default function SuperAdmin() {
   const { user, signOut } = useAuth();
+  const { request } = useApi();
   const navigate = useNavigate();
   const isSuperAdmin = user?.platformRole === "super_admin";
-  const stats = useQuery(api.platform.globalStats);
-  const tenants = useQuery(api.superadmin.listTenants);
-  const plans = useQuery(api.platform.listPlans);
-  const orders = useQuery(api.platform.globalOrders);
-  const logs = useQuery(api.platform.auditLogs, {});
+
+  const [stats, setStats] = useState<any>(null);
+  const [tenants, setTenants] = useState<Tenant[] | null>(null);
+  const [plans, setPlans] = useState<any[] | null>(null);
+  const [orders, setOrders] = useState<any[] | null>(null);
+  const [logs, setLogs] = useState<any[] | null>(null);
+
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    refreshData();
+  }, [isSuperAdmin]);
+
+  const refreshData = async () => {
+    request<any>("/platform/global-stats").then(({ data }) => setStats(data));
+    request<Tenant[]>("/superadmin/tenants").then(({ data }) => setTenants(data));
+    request<any[]>("/platform/plans").then(({ data }) => setPlans(data));
+    request<any[]>("/platform/global-orders").then(({ data }) => setOrders(data));
+    request<any[]>("/platform/audit-logs").then(({ data }) => setLogs(data));
+  };
 
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: "", slug: "", template: "minimal", planCode: "BASIC", adminEmail: "", adminName: "", whatsappPhone: "" });
-  const createTenant = useMutation(api.superadmin.createTenant);
-  const setTenantStatus = useMutation(api.superadmin.setTenantStatus);
-  const changePlan = useMutation(api.superadmin.changeTenantPlan);
-  const seed = useMutation(api.storefront.seedDemoData);
 
   const filtered = useMemo(() => {
     if (!tenants) return [];
     const s = search.toLowerCase();
-    return tenants.filter((t: any) => t.name.toLowerCase().includes(s) || t.slug.includes(s));
+    return tenants.filter((t: Tenant) => t.name.toLowerCase().includes(s) || t.slug.includes(s));
   }, [tenants, search]);
 
   if (!isSuperAdmin) {
@@ -90,12 +99,17 @@ export default function SuperAdmin() {
         toast.error("Nombre, slug y email del administrador son obligatorios");
         return;
       }
-      await createTenant({ ...form, slug: form.slug.toLowerCase().trim() });
+      const { error } = await request("/superadmin/tenants", {
+        method: "POST",
+        body: JSON.stringify({ ...form, slug: form.slug.toLowerCase().trim() })
+      });
+      if (error) throw new Error(error);
       toast.success(`Tienda "${form.name}" creada`);
       setOpen(false);
       setForm({ name: "", slug: "", template: "minimal", planCode: "BASIC", adminEmail: "", adminName: "", whatsappPhone: "" });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Error al crear tienda");
+      refreshData();
+    } catch (e: any) {
+      toast.error(e.message || "Error al crear tienda");
     }
   };
 
@@ -113,7 +127,10 @@ export default function SuperAdmin() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => seed().then(() => toast.success("Datos demo creados")).catch((e) => toast.error(e.message))}>
+            <Button variant="outline" size="sm" onClick={async () => {
+              const { error } = await request("/admin/seed-demo-data", { method: "POST" });
+              if (error) toast.error(error); else { toast.success("Datos demo creados"); refreshData(); }
+            }}>
               <Plus className="size-4 mr-1" /> Datos demo
             </Button>
             <Button variant="ghost" size="sm" onClick={() => signOut().then(() => navigate("/"))}>
@@ -229,8 +246,8 @@ export default function SuperAdmin() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filtered.map((t: any) => (
-                      <TableRow key={t._id}>
+                    {filtered.map((t: Tenant) => (
+                      <TableRow key={t.id}>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <div>
@@ -252,12 +269,31 @@ export default function SuperAdmin() {
                             <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8"><MoreVertical className="size-4" /></Button></DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem onClick={() => window.open(`/t/${t.slug}`, "_blank")}>Ver storefront</DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => { const code = prompt(`Nuevo plan para ${t.name}:`, t.planCode); if (code) changePlan({ tenantId: t._id as any, planCode: code }).then(() => toast.success("Plan actualizado")).catch((e) => toast.error(e.message)); }}>Cambiar plan</DropdownMenuItem>
+                              <DropdownMenuItem onClick={async () => {
+                                const code = prompt(`Nuevo plan para ${t.name}:`, t.planCode);
+                                if (code) {
+                                  const { error } = await request(`/superadmin/tenants/${t.id}/plan`, { method: "POST", body: JSON.stringify({ planCode: code }) });
+                                  if (error) toast.error(error); else { toast.success("Plan actualizado"); refreshData(); }
+                                }
+                              }}>Cambiar plan</DropdownMenuItem>
                               {t.status === "active" ? (
-                                <DropdownMenuItem className="text-red-600" onClick={() => { const reason = prompt(`Motivo de suspensión de ${t.name}:`) ?? "Violación de términos"; setTenantStatus({ tenantId: t._id as any, status: "suspended", reason }).then(() => toast.success("Tienda suspendida")).catch((e) => toast.error(e.message)); }}>Suspender</DropdownMenuItem>
+                                <DropdownMenuItem className="text-red-600" onClick={async () => {
+                                  const reason = prompt(`Motivo de suspensión de ${t.name}:`) ?? "Violación de términos";
+                                  const { error } = await request(`/superadmin/tenants/${t.id}/status`, { method: "POST", body: JSON.stringify({ status: "suspended", reason }) });
+                                  if (error) toast.error(error); else { toast.success("Tienda suspendida"); refreshData(); }
+                                }}>Suspender</DropdownMenuItem>
                               ) : (
-                                <DropdownMenuItem onClick={() => setTenantStatus({ tenantId: t._id as any, status: "active" }).then(() => toast.success("Tienda reactivada")).catch((e) => toast.error(e.message))}>Reactivar</DropdownMenuItem>
+                                <DropdownMenuItem onClick={async () => {
+                                  const { error } = await request(`/superadmin/tenants/${t.id}/status`, { method: "POST", body: JSON.stringify({ status: "active" }) });
+                                  if (error) toast.error(error); else { toast.success("Tienda reactivada"); refreshData(); }
+                                }}>Reactivar</DropdownMenuItem>
                               )}
+                              <DropdownMenuItem className="text-red-600" onClick={async () => {
+                                if (confirm(`¿Eliminar tienda "${t.name}" PERMANENTEMENTE?`)) {
+                                  const { error } = await request(`/superadmin/tenants/${t.id}`, { method: "DELETE" });
+                                  if (error) toast.error(error); else { toast.success("Tienda eliminada"); refreshData(); }
+                                }
+                              }}>Eliminar</DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -305,7 +341,7 @@ export default function SuperAdmin() {
                   </TableHeader>
                   <TableBody>
                     {(orders ?? []).map((o: any) => (
-                      <TableRow key={o._id}>
+                      <TableRow key={o.id}>
                         <TableCell className="font-mono text-xs">#{o.number}</TableCell>
                         <TableCell className="text-sm">{o.tenantName}</TableCell>
                         <TableCell className="hidden sm:table-cell text-sm">{o.customerName}</TableCell>
@@ -336,7 +372,7 @@ export default function SuperAdmin() {
                   </TableHeader>
                   <TableBody>
                     {(logs ?? []).slice(0, 50).map((l: any) => (
-                      <TableRow key={l._id}>
+                      <TableRow key={l.id}>
                         <TableCell><Badge variant="outline" className="font-mono text-[10px]">{l.action}</Badge></TableCell>
                         <TableCell className="hidden sm:table-cell text-xs">{l.resource}</TableCell>
                         <TableCell className="hidden md:table-cell text-xs">{l.actorLabel}</TableCell>

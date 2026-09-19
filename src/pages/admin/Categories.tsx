@@ -1,6 +1,5 @@
-import { useState } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useState, useEffect } from "react";
+import { useApi } from "@/hooks/use-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,38 +8,57 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { FolderTree, Pencil, Plus, Trash2 } from "lucide-react";
-import { Id } from "@/convex/_generated/dataModel";
 
 type Category = {
-  _id: Id<"categories">;
+  id: string;
   name: string;
   slug: string;
-  parentId?: Id<"categories">;
+  parentId?: string;
 };
 
 export default function AdminCategories() {
-  const categories = useQuery(api.catalog.listCategories, {}) as Category[] | undefined;
-  const save = useMutation(api.catalog.saveCategory);
-  const remove = useMutation(api.catalog.deleteCategory);
+  const { request } = useApi();
+  const [categories, setCategories] = useState<Category[] | null>(null);
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ id: undefined as Id<"categories"> | undefined, name: "", parentId: "" as string });
+  const [form, setForm] = useState({ id: undefined as string | undefined, name: "", parentId: "" as string });
+
+  const refreshData = async () => {
+    const { data } = await request<Category[]>("/catalog/categories");
+    setCategories(data);
+  };
+
+  useEffect(() => {
+    refreshData();
+  }, []);
 
   const roots = (categories ?? []).filter((c) => !c.parentId);
-  const childrenOf = (id: Id<"categories">) => (categories ?? []).filter((c) => c.parentId === id);
+  const childrenOf = (id: string) => (categories ?? []).filter((c) => c.parentId === id);
 
   const handleSave = async () => {
     try {
       if (!form.name.trim()) { toast.error("El nombre es obligatorio"); return; }
-      await save({
-        id: form.id,
-        name: form.name,
-        parentId: form.parentId ? (form.parentId as Id<"categories">) : undefined,
+      const { error } = await request("/catalog/categories", {
+        method: "POST",
+        body: JSON.stringify({
+          id: form.id,
+          name: form.name,
+          parentId: form.parentId || undefined,
+        })
       });
+      if (error) throw new Error(error);
       toast.success(form.id ? "Categoría actualizada" : "Categoría creada");
       setOpen(false);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Error al guardar");
+      refreshData();
+    } catch (e: any) {
+      toast.error(e.message || "Error al guardar");
     }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm(`¿Eliminar categoría? Los productos quedarán sin categoría.`)) return;
+    const { error } = await request(`/catalog/categories/${id}`, { method: "DELETE" });
+    if (error) toast.error(error);
+    else { toast.success("Eliminada"); refreshData(); }
   };
 
   const Row = ({ cat, depth }: { cat: Category; depth: number }) => (
@@ -54,15 +72,15 @@ export default function AdminCategories() {
           </div>
         </div>
         <div className="flex gap-1 shrink-0">
-          <Button variant="ghost" size="icon" className="size-8" onClick={() => { setForm({ id: cat._id, name: cat.name, parentId: cat.parentId ?? "" }); setOpen(true); }}>
+          <Button variant="ghost" size="icon" className="size-8" onClick={() => { setForm({ id: cat.id, name: cat.name, parentId: cat.parentId ?? "" }); setOpen(true); }}>
             <Pencil className="size-3.5" />
           </Button>
-          <Button variant="ghost" size="icon" className="size-8 text-red-600" onClick={() => { if (confirm(`¿Eliminar "${cat.name}"? Los productos quedarán sin categoría.`)) remove({ id: cat._id }).then(() => toast.success("Eliminada")).catch((e) => toast.error(e.message)); }}>
+          <Button variant="ghost" size="icon" className="size-8 text-red-600" onClick={() => handleDelete(cat.id)}>
             <Trash2 className="size-3.5" />
           </Button>
         </div>
       </div>
-      {childrenOf(cat._id).map((child) => <Row key={child._id} cat={child} depth={depth + 1} />)}
+      {childrenOf(cat.id).map((child) => <Row key={child.id} cat={child} depth={depth + 1} />)}
     </>
   );
 
@@ -74,7 +92,7 @@ export default function AdminCategories() {
       </div>
 
       <div className="space-y-2 max-w-2xl">
-        {roots.map((cat) => <Row key={cat._id} cat={cat} depth={0} />)}
+        {roots.map((cat) => <Row key={cat.id} cat={cat} depth={0} />)}
         {roots.length === 0 && (
           <Card>
             <CardContent className="py-12 text-center text-sm text-muted-foreground">
@@ -99,8 +117,8 @@ export default function AdminCategories() {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="root">— Raíz —</SelectItem>
-                  {(categories ?? []).filter((c) => c._id !== form.id).map((c) => (
-                    <SelectItem key={c._id} value={c._id}>{c.name}</SelectItem>
+                  {(categories ?? []).filter((c) => c.id !== form.id).map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

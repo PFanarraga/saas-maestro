@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useEffect, useState } from "react";
+import { useApi } from "@/hooks/use-api";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
@@ -23,9 +23,14 @@ const NAV = [
 ];
 
 export default function StoreAdmin() {
-  const access = useQuery(api.platform.myAccess);
+  const { request } = useApi();
+  const [access, setAccess] = useState<any>(null);
   const { signOut } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    request<any>("/me/access").then(({ data }) => setAccess(data));
+  }, [request]);
 
   return (
     <div className="min-h-screen bg-muted/40">

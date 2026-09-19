@@ -1,7 +1,6 @@
-import { useEffect } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
+import { useApi } from "@/hooks/use-api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,21 +8,34 @@ import { Loader2, LogOut, ShieldCheck, Store } from "lucide-react";
 import { useNavigate } from "react-router";
 
 export default function Start() {
-  const { isLoading, isAuthenticated, signOut } = useAuth();
-  const user = useQuery(api.platform.currentUser);
-  const access = useQuery(api.platform.myAccess);
-  const bootstrap = useMutation(api.platform.bootstrap);
-  const claim = useMutation(api.platform.claimMembership);
+  const { isLoading: authLoading, isAuthenticated, user, signOut } = useAuth();
+  const { request } = useApi();
   const navigate = useNavigate();
+  const [access, setAccess] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Bootstrap super admin + claim pending invite (side effects only, no routing).
   useEffect(() => {
-    if (!isAuthenticated || !user) return;
-    bootstrap({}).catch(() => undefined);
-    claim({}).catch(() => undefined);
-  }, [isAuthenticated, user, bootstrap, claim]);
+    if (authLoading) return;
+    if (!isAuthenticated) {
+      navigate("/auth");
+      return;
+    }
 
-  if (isLoading || user === undefined || access === undefined) {
+    async function init() {
+      // Bootstrap and claim
+      await request("/me/bootstrap", { method: "POST" });
+      await request("/me/claim-membership", { method: "POST" });
+
+      // Fetch access context
+      const { data } = await request<any>("/me/access");
+      setAccess(data);
+      setIsLoading(false);
+    }
+
+    init();
+  }, [authLoading, isAuthenticated, request, navigate]);
+
+  if (authLoading || isLoading) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="size-6 animate-spin text-muted-foreground" />

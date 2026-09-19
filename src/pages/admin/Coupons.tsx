@@ -1,6 +1,5 @@
-import { useState } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useState, useEffect } from "react";
+import { useApi } from "@/hooks/use-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,10 +12,9 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Plus, Trash2 } from "lucide-react";
 import { formatMoney } from "@/lib/utils-shared";
-import { Id } from "@/convex/_generated/dataModel";
 
 type Coupon = {
-  _id: Id<"coupons">;
+  id: string;
   code: string;
   type: "percentage" | "fixed_amount" | "free_shipping";
   value: number;
@@ -28,13 +26,21 @@ type Coupon = {
 };
 
 export default function AdminCoupons() {
-  const coupons = useQuery(api.store.listCoupons) as Coupon[] | undefined;
-  const save = useMutation(api.store.saveCoupon);
-  const remove = useMutation(api.store.deleteCoupon);
+  const { request } = useApi();
+  const [coupons, setCoupons] = useState<Coupon[] | null>(null);
+
+  const refreshData = async () => {
+    const { data } = await request<Coupon[]>("/store/coupons");
+    setCoupons(data);
+  };
+
+  useEffect(() => {
+    refreshData();
+  }, []);
 
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
-    id: undefined as Id<"coupons"> | undefined,
+    id: undefined as string | undefined,
     code: "",
     type: "percentage" as Coupon["type"],
     value: "10",
@@ -43,10 +49,9 @@ export default function AdminCoupons() {
     isActive: true,
   });
 
-  const handleSave = async () => {
+  const handleSave = async (payload?: any) => {
     try {
-      if (!form.code.trim()) { toast.error("El código es obligatorio"); return; }
-      await save({
+      const body = payload || {
         id: form.id,
         code: form.code.toUpperCase(),
         type: form.type,
@@ -54,10 +59,24 @@ export default function AdminCoupons() {
         minAmount: form.minAmount ? parseFloat(form.minAmount) : undefined,
         maxUses: form.maxUses ? parseInt(form.maxUses, 10) : undefined,
         isActive: form.isActive,
+      };
+      if (!body.code.trim()) { toast.error("El código es obligatorio"); return; }
+      const { error } = await request("/store/coupons", {
+        method: "POST",
+        body: JSON.stringify(body)
       });
-      toast.success(form.id ? "Cupón actualizado" : "Cupón creado");
+      if (error) throw new Error(error);
+      toast.success(body.id ? "Cupón actualizado" : "Cupón creado");
       setOpen(false);
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Error"); }
+      refreshData();
+    } catch (e: any) { toast.error(e.message || "Error"); }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm(`¿Eliminar cupón?`)) return;
+    const { error } = await request(`/store/coupons/${id}`, { method: "DELETE" });
+    if (error) toast.error(error);
+    else { toast.success("Eliminado"); refreshData(); }
   };
 
   const typeLabel = (c: Coupon) =>
@@ -87,7 +106,7 @@ export default function AdminCoupons() {
             </TableHeader>
             <TableBody>
               {(coupons ?? []).map((c) => (
-                <TableRow key={c._id}>
+                <TableRow key={c.id}>
                   <TableCell><Badge variant="outline" className="font-mono">{c.code}</Badge></TableCell>
                   <TableCell className="text-sm">{typeLabel(c)}</TableCell>
                   <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
@@ -96,10 +115,10 @@ export default function AdminCoupons() {
                   </TableCell>
                   <TableCell className="hidden sm:table-cell text-sm">{c.usageCount}{c.maxUses ? `/${c.maxUses}` : ""}</TableCell>
                   <TableCell>
-                    <Switch checked={c.isActive} onCheckedChange={(v) => save({ ...c, id: c._id, isActive: v }).then(() => toast.success("Actualizado")).catch((e) => toast.error(e.message))} />
+                    <Switch checked={c.isActive} onCheckedChange={(v) => handleSave({ ...c, id: c.id, isActive: v })} />
                   </TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="icon" className="size-8 text-red-600" onClick={() => { if (confirm(`¿Eliminar cupón ${c.code}?`)) remove({ id: c._id }).then(() => toast.success("Eliminado")).catch((e) => toast.error(e.message)); }}>
+                    <Button variant="ghost" size="icon" className="size-8 text-red-600" onClick={() => handleDelete(c.id)}>
                       <Trash2 className="size-3.5" />
                     </Button>
                   </TableCell>

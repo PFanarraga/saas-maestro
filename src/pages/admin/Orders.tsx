@@ -1,6 +1,5 @@
-import { useMemo, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useMemo, useState, useEffect } from "react";
+import { useApi } from "@/hooks/use-api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -11,10 +10,9 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Link2, MessageCircle } from "lucide-react";
 import { formatDateTime, formatMoney, ORDER_STATUS_COLORS, ORDER_STATUS_LABELS, whatsappLink } from "@/lib/utils-shared";
-import { Id } from "@/convex/_generated/dataModel";
 
 type Order = {
-  _id: Id<"orders">;
+  id: string;
   number: string;
   customerName: string;
   customerPhone: string;
@@ -26,9 +24,9 @@ type Order = {
 };
 
 type OrderDetail = Order & {
-  items: Array<{ _id: string; name: string; variantLabel?: string; unitPrice: number; quantity: number; total: number }>;
-  history: Array<{ _id: string; toStatus: string; actor: string; note?: string; createdAt: number }>;
-  paymentLinks: Array<{ _id: string; url: string; status: string; provider: string }>;
+  items: Array<{ id: string; name: string; variantLabel?: string; unitPrice: number; quantity: number; total: number }>;
+  history: Array<{ id: string; toStatus: string; actor: string; note?: string; createdAt: number }>;
+  paymentLinks: Array<{ id: string; url: string; status: string; provider: string }>;
   address?: { line1: string; city?: string; reference?: string };
   notes?: string;
   discountTotal: number;
@@ -39,12 +37,27 @@ type OrderDetail = Order & {
 const STATUS_FLOW = ["payment_pending", "paid", "processing", "ready", "shipped", "delivered", "cancelled"];
 
 export default function AdminOrders() {
-  const orders = useQuery(api.orders.listOrders, {}) as Order[] | undefined;
-  const setStatus = useMutation(api.orders.setOrderStatus);
-  const createLink = useMutation(api.payments.createPaymentLink);
+  const { request } = useApi();
+  const [orders, setOrders] = useState<Order[] | null>(null);
   const [statusFilter, setStatusFilter] = useState("all");
-  const [selected, setSelected] = useState<Id<"orders"> | null>(null);
-  const detail = useQuery(api.orders.getOrder, selected ? { id: selected } : "skip") as OrderDetail | undefined;
+  const [selected, setSelected] = useState<string | null>(null);
+  const [detail, setDetail] = useState<OrderDetail | null>(null);
+
+  useEffect(() => {
+    refreshOrders();
+  }, []);
+
+  useEffect(() => {
+    if (selected) {
+      request<OrderDetail>(`/orders/${selected}`).then(({ data }) => setDetail(data));
+    } else {
+      setDetail(null);
+    }
+  }, [selected, request]);
+
+  const refreshOrders = async () => {
+    request<Order[]>("/orders").then(({ data }) => setOrders(data));
+  };
 
   const filtered = useMemo(() => {
     let items = orders ?? [];
@@ -52,26 +65,34 @@ export default function AdminOrders() {
     return items;
   }, [orders, statusFilter]);
 
-  const handleStatus = async (orderId: Id<"orders">, status: string) => {
+  const handleStatus = async (orderId: string, status: string) => {
     try {
-      await setStatus({ orderId, status });
+      const { error } = await request(`/orders/${orderId}/status`, {
+        method: "POST",
+        body: JSON.stringify({ status })
+      });
+      if (error) throw new Error(error);
       toast.success(`Pedido actualizado a "${ORDER_STATUS_LABELS[status]}"`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Error al actualizar");
+      refreshOrders();
+      if (selected === orderId) {
+        request<OrderDetail>(`/orders/${orderId}`).then(({ data }) => setDetail(data));
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Error al actualizar");
     }
   };
 
   const handleCreateLink = async () => {
     if (!selected) return;
     try {
-      const link = await createLink({ orderId: selected });
-      if (!link) { toast.error("No se pudo crear el link"); return; }
+      const { data, error } = await request<any>(`/orders/${selected}/payment-link`, { method: "POST" });
+      if (error || !data) { toast.error(error || "No se pudo crear el link"); return; }
       toast.success("Link de pago creado", {
-        description: link.url,
-        action: { label: "Copiar", onClick: () => { navigator.clipboard.writeText(`${window.location.origin}${link.url}`); } },
+        description: data.url,
+        action: { label: "Copiar", onClick: () => { navigator.clipboard.writeText(`${window.location.origin}${data.url}`); } },
       });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Error al crear link");
+    } catch (e: any) {
+      toast.error(e.message || "Error al crear link");
     }
   };
 
@@ -102,7 +123,7 @@ export default function AdminOrders() {
             </TableHeader>
             <TableBody>
               {filtered.map((o) => (
-                <TableRow key={o._id} className="cursor-pointer" onClick={() => setSelected(o._id)}>
+                <TableRow key={o.id} className="cursor-pointer" onClick={() => setSelected(o.id)}>
                   <TableCell>
                     <p className="font-mono text-sm font-medium">#{o.number}</p>
                     <p className="text-xs text-muted-foreground md:hidden">{o.customerName}</p>
@@ -146,7 +167,7 @@ export default function AdminOrders() {
                 <Separator />
                 <div className="space-y-2">
                   {detail.items.map((i) => (
-                    <div key={i._id} className="flex justify-between text-sm">
+                    <div key={i.id} className="flex justify-between text-sm">
                       <span>{i.name}{i.variantLabel ? ` (${i.variantLabel})` : ""} ×{i.quantity}</span>
                       <span className="font-medium">{formatMoney(i.total, detail.currency)}</span>
                     </div>
@@ -162,7 +183,7 @@ export default function AdminOrders() {
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Historial</p>
                   <div className="space-y-1.5">
                     {detail.history.map((h) => (
-                      <div key={h._id} className="flex items-center gap-2 text-xs">
+                      <div key={h.id} className="flex items-center gap-2 text-xs">
                         <Badge variant="outline" className="text-[10px]">{ORDER_STATUS_LABELS[h.toStatus] ?? h.toStatus}</Badge>
                         <span className="text-muted-foreground">{h.actor} · {formatDateTime(h.createdAt)}</span>
                       </div>
@@ -170,7 +191,7 @@ export default function AdminOrders() {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2 pt-2">
-                  <Select value={detail.status} onValueChange={(v) => handleStatus(detail._id, v)}>
+                  <Select value={detail.status} onValueChange={(v) => handleStatus(detail.id, v)}>
                     <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {STATUS_FLOW.map((s) => <SelectItem key={s} value={s}>{ORDER_STATUS_LABELS[s]}</SelectItem>)}

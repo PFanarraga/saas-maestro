@@ -1,6 +1,5 @@
-import { useState } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useState, useEffect } from "react";
+import { useApi } from "@/hooks/use-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,22 +11,26 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Plus, Trash2, Pencil } from "lucide-react";
 import { formatMoney } from "@/lib/utils-shared";
-import { Id } from "@/convex/_generated/dataModel";
 
 const METHOD_LABELS: Record<string, string> = { pickup: "Recojo", delivery: "Delivery", shipping: "Envío" };
 
 export default function AdminDelivery() {
-  const data = useQuery(api.store.listDelivery);
-  const saveZone = useMutation(api.store.saveDeliveryZone);
-  const deleteZone = useMutation(api.store.deleteDeliveryZone);
-  const saveRate = useMutation(api.store.saveDeliveryRate);
-  const deleteRate = useMutation(api.store.deleteDeliveryRate);
+  const { request } = useApi();
+  const [data, setData] = useState<any>(null);
+
+  const refreshData = async () => {
+    request<any>("/store/delivery").then(({ data }) => setData(data));
+  };
+
+  useEffect(() => {
+    refreshData();
+  }, []);
 
   const [zoneOpen, setZoneOpen] = useState(false);
-  const [zoneForm, setZoneForm] = useState({ id: undefined as Id<"deliveryZones"> | undefined, name: "", isActive: true });
+  const [zoneForm, setZoneForm] = useState({ id: undefined as string | undefined, name: "", isActive: true });
   const [rateOpen, setRateOpen] = useState(false);
   const [rateForm, setRateForm] = useState({
-    id: undefined as Id<"deliveryRates"> | undefined,
+    id: undefined as string | undefined,
     zoneId: "" as string,
     name: "",
     method: "delivery" as "pickup" | "delivery" | "shipping",
@@ -40,28 +43,46 @@ export default function AdminDelivery() {
   const handleSaveZone = async () => {
     try {
       if (!zoneForm.name.trim()) { toast.error("El nombre es obligatorio"); return; }
-      await saveZone(zoneForm);
+      const { error } = await request("/store/delivery/zones", { method: "POST", body: JSON.stringify(zoneForm) });
+      if (error) throw new Error(error);
       toast.success("Zona guardada");
       setZoneOpen(false);
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Error"); }
+      refreshData();
+    } catch (e: any) { toast.error(e.message || "Error"); }
   };
 
-  const handleSaveRate = async () => {
+  const handleSaveRate = async (payload?: any) => {
     try {
-      if (!rateForm.zoneId || !rateForm.name.trim()) { toast.error("Zona y nombre son obligatorios"); return; }
-      await saveRate({
+      const body = payload || {
         id: rateForm.id,
-        zoneId: rateForm.zoneId as Id<"deliveryZones">,
+        zoneId: rateForm.zoneId,
         name: rateForm.name,
         method: rateForm.method,
         price: parseFloat(rateForm.price) || 0,
         freeOver: rateForm.freeOver ? parseFloat(rateForm.freeOver) : undefined,
         eta: rateForm.eta || undefined,
         isActive: rateForm.isActive,
-      });
+      };
+      if (!body.zoneId || !body.name.trim()) { toast.error("Zona y nombre son obligatorios"); return; }
+      const { error } = await request("/store/delivery/rates", { method: "POST", body: JSON.stringify(body) });
+      if (error) throw new Error(error);
       toast.success("Tarifa guardada");
       setRateOpen(false);
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Error"); }
+      refreshData();
+    } catch (e: any) { toast.error(e.message || "Error"); }
+  };
+
+  const handleDeleteZone = async (id: string, name: string) => {
+    if (!confirm(`¿Eliminar zona "${name}" y sus tarifas?`)) return;
+    const { error } = await request(`/store/delivery/zones/${id}`, { method: "DELETE" });
+    if (error) toast.error(error);
+    else { toast.success("Zona eliminada"); refreshData(); }
+  };
+
+  const handleDeleteRate = async (id: string) => {
+    const { error } = await request(`/store/delivery/rates/${id}`, { method: "DELETE" });
+    if (error) toast.error(error);
+    else { toast.success("Tarifa eliminada"); refreshData(); }
   };
 
   return (
@@ -73,26 +94,26 @@ export default function AdminDelivery() {
 
       <div className="space-y-4">
         {(data?.zones ?? []).map((zone: any) => {
-          const rates = (data?.rates ?? []).filter((r: any) => r.zoneId === zone._id);
+          const rates = (data?.rates ?? []).filter((r: any) => r.zoneId === zone.id);
           return (
-            <Card key={zone._id}>
+            <Card key={zone.id}>
               <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
                 <div>
                   <CardTitle className="text-base">{zone.name}</CardTitle>
                   {!zone.isActive && <Badge variant="outline" className="text-xs">Inactiva</Badge>}
                 </div>
                 <div className="flex gap-1">
-                  <Button variant="ghost" size="sm" onClick={() => { setRateForm({ id: undefined, zoneId: zone._id, name: "", method: "delivery", price: "5", freeOver: "", eta: "", isActive: true }); setRateOpen(true); }}>
+                  <Button variant="ghost" size="sm" onClick={() => { setRateForm({ id: undefined, zoneId: zone.id, name: "", method: "delivery", price: "5", freeOver: "", eta: "", isActive: true }); setRateOpen(true); }}>
                     <Plus className="size-3.5 mr-1" /> Tarifa
                   </Button>
-                  <Button variant="ghost" size="icon" className="size-8 text-red-600" onClick={() => { if (confirm(`¿Eliminar zona "${zone.name}" y sus tarifas?`)) deleteZone({ id: zone._id }).then(() => toast.success("Zona eliminada")).catch((e: any) => toast.error(e.message)); }}>
+                  <Button variant="ghost" size="icon" className="size-8 text-red-600" onClick={() => handleDeleteZone(zone.id, zone.name)}>
                     <Trash2 className="size-3.5" />
                   </Button>
                 </div>
               </CardHeader>
               <CardContent className="space-y-2">
                 {rates.map((r: any) => (
-                  <div key={r._id} className="flex items-center justify-between rounded-lg border p-3">
+                  <div key={r.id} className="flex items-center justify-between rounded-lg border p-3">
                     <div className="min-w-0">
                       <p className="text-sm font-medium">{r.name} <Badge variant="outline" className="ml-1 text-[10px]">{METHOD_LABELS[r.method]}</Badge></p>
                       <p className="text-xs text-muted-foreground">
@@ -102,11 +123,11 @@ export default function AdminDelivery() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Switch checked={r.isActive} onCheckedChange={(v) => saveRate({ ...r, id: r._id, isActive: v }).catch((e: Error) => toast.error(e.message))} />
-                      <Button variant="ghost" size="icon" className="size-8" onClick={() => { setRateForm({ id: r._id, zoneId: r.zoneId, name: r.name, method: r.method, price: String(r.price), freeOver: r.freeOver ? String(r.freeOver) : "", eta: r.eta ?? "", isActive: r.isActive }); setRateOpen(true); }}>
+                      <Switch checked={r.isActive} onCheckedChange={(v) => handleSaveRate({ ...r, id: r.id, isActive: v })} />
+                      <Button variant="ghost" size="icon" className="size-8" onClick={() => { setRateForm({ id: r.id, zoneId: r.zoneId, name: r.name, method: r.method, price: String(r.price), freeOver: r.freeOver ? String(r.freeOver) : "", eta: r.eta ?? "", isActive: r.isActive }); setRateOpen(true); }}>
                         <Pencil className="size-3.5" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="size-8 text-red-600" onClick={() => deleteRate({ id: r._id }).then(() => toast.success("Tarifa eliminada")).catch((e) => toast.error(e.message))}>
+                      <Button variant="ghost" size="icon" className="size-8 text-red-600" onClick={() => handleDeleteRate(r.id)}>
                         <Trash2 className="size-3.5" />
                       </Button>
                     </div>

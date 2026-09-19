@@ -1,6 +1,6 @@
 import { Link } from "react-router";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useEffect, useState } from "react";
+import { useApi } from "@/hooks/use-api";
 import { motion } from "framer-motion";
 import { ArrowRight, Building2, CheckCircle2, Globe, MessageCircle, Palette, ShieldCheck, ShoppingCart, Store, Layers, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 export default function Landing() {
-  const stats = useQuery(api.storefront.publicStats);
+  const { request } = useApi();
+  const [stats, setStats] = useState<any>(null);
+
+  useEffect(() => {
+    request<any>("/public/stats").then(({ data }) => setStats(data));
+  }, [request]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">

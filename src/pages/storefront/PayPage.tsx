@@ -1,7 +1,6 @@
 import { useParams } from "react-router";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useApi } from "@/hooks/use-api";
 import { toast } from "sonner";
 import { CheckCircle2, CreditCard, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,18 +8,29 @@ import { formatMoney } from "@/lib/utils-shared";
 
 export default function PayPage() {
   const { token } = useParams<{ token: string }>();
-  const data = useQuery(api.payments.publicPayPage, token ? { token } : "skip");
-  const simulate = useMutation(api.payments.simulatePayment);
+  const { request } = useApi();
+  const [data, setData] = useState<any>(undefined);
   const [paying, setPaying] = useState(false);
+
+  const refreshData = async () => {
+    const { data } = await request<any>(`/public/pay/${token}`);
+    setData(data);
+  };
+
+  useEffect(() => {
+    if (token) refreshData();
+  }, [token, request]);
 
   const handlePay = async () => {
     if (!token) return;
     setPaying(true);
     try {
-      await simulate({ token });
+      const { error } = await request(`/public/pay/${token}/simulate`, { method: "POST" });
+      if (error) throw new Error(error);
       toast.success("¡Pago confirmado! Gracias por tu compra.");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "No se pudo procesar el pago");
+      refreshData();
+    } catch (e: any) {
+      toast.error(e.message || "No se pudo procesar el pago");
     } finally {
       setPaying(false);
     }
@@ -57,7 +67,7 @@ export default function PayPage() {
               <>
                 <div className="space-y-2">
                   {data.items.map((i: any) => (
-                    <div key={i._id ?? i.name} className="flex justify-between text-sm gap-2">
+                    <div key={i.id ?? i.name} className="flex justify-between text-sm gap-2">
                       <span className="min-w-0 truncate">{i.name}{i.variantLabel ? ` (${i.variantLabel})` : ""} ×{i.quantity}</span>
                       <span className="shrink-0">{formatMoney(i.total, data.currency)}</span>
                     </div>

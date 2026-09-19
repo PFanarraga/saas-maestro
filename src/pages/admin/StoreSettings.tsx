@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useApi } from "@/hooks/use-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,8 +12,8 @@ import { toast } from "sonner";
 import { Save } from "lucide-react";
 
 export default function StoreSettings() {
-  const data = useQuery(api.store.getSettings);
-  const update = useMutation(api.store.updateTenantInfo);
+  const { request, isLoading } = useApi();
+  const [data, setData] = useState<any>(null);
 
   const [form, setForm] = useState({
     name: "",
@@ -30,8 +29,12 @@ export default function StoreSettings() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
+    request<any>("/store/settings").then(({ data }) => setData(data));
+  }, [request]);
+
+  useEffect(() => {
     if (data?.tenant && !loaded) {
-      const t = data.tenant as any;
+      const t = data.tenant;
       setForm({
         name: t.name ?? "",
         whatsappPhone: t.whatsappPhone ?? "",
@@ -49,12 +52,16 @@ export default function StoreSettings() {
 
   const handleSave = async () => {
     try {
-      await update(form);
+      const { error } = await request("/store/settings", {
+        method: "POST",
+        body: JSON.stringify(form)
+      });
+      if (error) throw new Error(error);
       toast.success("Configuración guardada");
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Error"); }
+    } catch (e: any) { toast.error(e.message || "Error"); }
   };
 
-  if (!data) return <div className="p-8 text-sm text-muted-foreground">Cargando…</div>;
+  if (isLoading || !data) return <div className="p-8 text-sm text-muted-foreground">Cargando…</div>;
 
   return (
     <div className="p-6 lg:p-8 max-w-2xl space-y-4">

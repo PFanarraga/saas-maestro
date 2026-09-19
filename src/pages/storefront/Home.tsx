@@ -1,6 +1,6 @@
 import { Link, useParams, useSearchParams } from "react-router";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useEffect, useState } from "react";
+import { useApi } from "@/hooks/use-api";
 import { formatMoney, type PageBlock } from "@/lib/utils-shared";
 
 export function ProductCard({ product, slug, currency }: { product: any; slug: string; currency: string }) {
@@ -26,15 +26,39 @@ export function ProductCard({ product, slug, currency }: { product: any; slug: s
 
 export default function StoreHome() {
   const { slug } = useParams<{ slug: string }>();
+  const { request } = useApi();
   const [searchParams] = useSearchParams();
   const isPreview = searchParams.get("preview") === "draft";
-  const page = useQuery(
-    isPreview ? api.store.getPageDraft : api.store.getPublishedPage,
-    isPreview ? { slug: "home" } : slug ? { slug: "home", tenantSlug: slug } : "skip",
-  );
-  const featured = useQuery(api.storefront.listPublicProducts, slug ? { slug } : "skip");
-  const categories = useQuery(api.catalog.listPublicCategories, slug ? { slug } : "skip");
-  const tenant = useQuery(api.storefront.getTenantBySlug, slug ? { slug } : "skip");
+
+  const [page, setPage] = useState<any>(null);
+  const [featured, setFeatured] = useState<any[] | null>(null);
+  const [categories, setCategories] = useState<any[] | null>(null);
+  const [tenant, setTenant] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!slug) return;
+
+    async function fetchData() {
+      const pagePath = isPreview ? `/store/pages/home/draft` : `/public/tenants/${slug}/pages/home`;
+      const [pageRes, productsRes, catsRes, tenantRes] = await Promise.all([
+        request<any>(pagePath),
+        request<any[]>(`/public/tenants/${slug}/products`),
+        request<any[]>(`/public/tenants/${slug}/categories`),
+        request<any>(`/public/tenants/${slug}`)
+      ]);
+
+      setPage(pageRes.data);
+      setFeatured(productsRes.data);
+      setCategories(catsRes.data);
+      setTenant(tenantRes.data);
+      setIsLoading(false);
+    }
+
+    fetchData();
+  }, [slug, isPreview, request]);
+
+  if (isLoading) return <div className="min-h-screen" />;
 
   if (!page) {
     return (
@@ -78,7 +102,7 @@ export default function StoreHome() {
             <h2 className="text-xl font-bold mb-4">{b.settings.title ?? "Categorías"}</h2>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {(categories ?? []).filter((c: any) => !c.parentId).slice(0, 8).map((c: any) => (
-                <Link key={c._id} to={`/t/${slug}/products?category=${c.slug}`} className="sf-card rounded-[var(--sf-radius)] border p-4 text-center sf-hover">
+                <Link key={c.id} to={`/t/${slug}/products?category=${c.slug}`} className="sf-card rounded-[var(--sf-radius)] border p-4 text-center sf-hover">
                   <p className="font-medium text-sm">{c.name}</p>
                 </Link>
               ))}
@@ -92,7 +116,7 @@ export default function StoreHome() {
           <section key={b.id} className="mx-auto max-w-6xl px-4 py-8">
             <h2 className="text-xl font-bold mb-4">{b.settings.title ?? "Productos"}</h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
-              {items.map((p: any) => <ProductCard key={p._id} product={p} slug={slug!} currency={currency} />)}
+              {items.map((p: any) => <ProductCard key={p.id} product={p} slug={slug!} currency={currency} />)}
             </div>
           </section>
         );

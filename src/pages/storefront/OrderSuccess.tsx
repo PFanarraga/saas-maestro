@@ -1,17 +1,24 @@
 import { Link, useParams, useSearchParams } from "react-router";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useEffect, useState } from "react";
+import { useApi } from "@/hooks/use-api";
 import { CheckCircle2, Clock, MessageCircle } from "lucide-react";
 import { formatMoney, whatsappLink } from "@/lib/utils-shared";
 
 export default function OrderSuccess() {
   const { slug } = useParams<{ slug: string }>();
+  const { request } = useApi();
   const [searchParams] = useSearchParams();
   const number = searchParams.get("number") ?? "";
   const phone = searchParams.get("phone") ?? "";
 
-  const order = useQuery(api.orders.lookupPublicOrder, slug && number && phone ? { slug, number, phone } : "skip");
-  const tenant = useQuery(api.storefront.getTenantBySlug, slug ? { slug } : "skip");
+  const [order, setOrder] = useState<any>(null);
+  const [tenant, setTenant] = useState<any>(null);
+
+  useEffect(() => {
+    if (!slug || !number || !phone) return;
+    request<any>(`/public/tenants/${slug}/orders/${number}?phone=${encodeURIComponent(phone)}`).then(({ data }) => setOrder(data));
+    request<any>(`/public/tenants/${slug}`).then(({ data }) => setTenant(data));
+  }, [slug, number, phone, request]);
 
   const waContact = tenant?.whatsappEnabled && tenant.whatsappPhone
     ? whatsappLink(tenant.whatsappPhone, `Hola, quiero consultar mi pedido #${number}.`)

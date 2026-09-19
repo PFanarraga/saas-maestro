@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useApi } from "@/hooks/use-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,21 +26,29 @@ const BLOCK_LIBRARY: Array<{ type: string; label: string; defaults: Record<strin
 ];
 
 export default function PageBuilder() {
-  const draft = useQuery(api.store.getPageDraft, { slug: "home" });
-  const saveDraft = useMutation(api.store.savePageDraft);
-  const publish = useMutation(api.store.publishPage);
-  const access = useQuery(api.platform.myAccess);
+  const { request } = useApi();
+  const [draft, setDraft] = useState<any>(null);
+  const [access, setAccess] = useState<any>(null);
 
   const [blocks, setBlocks] = useState<PageBlock[]>([]);
   const [title, setTitle] = useState("Inicio");
   const [dirty, setDirty] = useState(false);
   const [loadedId, setLoadedId] = useState<string | null>(null);
 
+  const refreshData = async () => {
+    request<any>("/store/pages/home/draft").then(({ data }) => setDraft(data));
+    request<any>("/me/access").then(({ data }) => setAccess(data));
+  };
+
   useEffect(() => {
-    if (draft && draft._id !== loadedId) {
+    refreshData();
+  }, [request]);
+
+  useEffect(() => {
+    if (draft && draft.id !== loadedId) {
       setBlocks(draft.blocks as PageBlock[]);
       setTitle(draft.title);
-      setLoadedId(draft._id);
+      setLoadedId(draft.id);
       setDirty(false);
     }
   }, [draft, loadedId]);
@@ -74,19 +81,29 @@ export default function PageBuilder() {
 
   const handleSave = async () => {
     try {
-      await saveDraft({ slug: "home", title, blocks: blocks.map((b, i) => ({ ...b, position: i })) });
+      const { error } = await request("/store/pages/home/draft", {
+        method: "POST",
+        body: JSON.stringify({ title, blocks: blocks.map((b, i) => ({ ...b, position: i })) })
+      });
+      if (error) throw new Error(error);
       setDirty(false);
       toast.success("Borrador guardado");
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Error"); }
+      refreshData();
+    } catch (e: any) { toast.error(e.message || "Error"); }
   };
 
   const handlePublish = async () => {
     try {
-      await saveDraft({ slug: "home", title, blocks: blocks.map((b, i) => ({ ...b, position: i })) });
-      const v = await publish({ slug: "home" });
+      await request("/store/pages/home/draft", {
+        method: "POST",
+        body: JSON.stringify({ title, blocks: blocks.map((b, i) => ({ ...b, position: i })) })
+      });
+      const { data, error } = await request<any>("/store/pages/home/publish", { method: "POST" });
+      if (error) throw new Error(error);
       setDirty(false);
-      toast.success(`Página publicada (v${v})`);
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Error"); }
+      toast.success(`Página publicada (v${data})`);
+      refreshData();
+    } catch (e: any) { toast.error(e.message || "Error"); }
   };
 
   const settingsFields = (b: PageBlock): Array<{ key: string; label: string; type?: "text" | "textarea" | "number" }> => {
