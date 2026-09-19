@@ -1,7 +1,7 @@
 {
   "name": "Shoply — Plataforma de tiendas online",
   "short_name": "Shoply",
-  "description": "Plataforma SaaS multi-tienda de comercio electrónico",
+  "description": "Crea tu tienda online con catálogo, pedidos, WhatsApp, delivery y pagos.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
