@@ -59,9 +59,6 @@ export default function Storefront() {
     fontFamily: theme?.typography?.body ?? "Inter",
   } as React.CSSProperties;
 
-  const sessionKey = useStoreSession(slug);
-  const cart = useQuery(api.cart.getCart, slug ? { slug, sessionKey } : "skip");
-
   if (tenant === null) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-2 p-6 text-center">

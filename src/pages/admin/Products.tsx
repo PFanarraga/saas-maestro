@@ -125,16 +125,6 @@ export default function AdminProducts() {
     if (error) toast.error(error);
     else { toast.success("Producto eliminado"); refreshData(); }
   };
-        categoryId: form.categoryId ? (form.categoryId as Id<"categories">) : undefined,
-        shortDescription: form.shortDescription || undefined,
-        description: form.description || undefined,
-      });
-      toast.success(form.id ? "Producto actualizado" : "Producto creado");
-      setOpen(false);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Error al guardar");
-    }
-  };
 
   return (
     <div className="p-6 lg:p-8 space-y-4">
