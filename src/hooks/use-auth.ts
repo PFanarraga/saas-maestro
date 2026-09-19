@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useApi } from "./use-api";
 
 export function useAuth() {
@@ -8,12 +8,29 @@ export function useAuth() {
   const [isLoading, setIsLoading] = useState(true);
   const { request } = useApi();
 
+  const fetchProfile = useCallback(async () => {
+    try {
+      const { data, error } = await request<any>("/me/user");
+      if (error) {
+        console.error("Profile fetch error:", error);
+        setUser(null);
+      } else {
+        setUser(data);
+      }
+    } catch (e) {
+      setUser(null);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [request]);
+
   useEffect(() => {
     if (!isSupabaseConfigured) {
       setIsLoading(false);
       return;
     }
-    // Check active sessions and sets the user
+
+    // Initial session check
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session) {
@@ -23,7 +40,7 @@ export function useAuth() {
       }
     });
 
-    // Listen for changes on auth state (sign in, sign out, etc.)
+    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session) {
@@ -35,46 +52,44 @@ export function useAuth() {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
-
-  async function fetchProfile() {
-    const { data } = await request<any>("/me/user");
-    if (data) {
-      setUser(data);
-    }
-    setIsLoading(false);
-  }
+  }, [fetchProfile]);
 
   const signIn = async ({ email }: { email: string }) => {
-    if (!isSupabaseConfigured) return { error: new Error("Supabase no está configurado") };
-    return await supabase.auth.signInWithOtp({ email });
+    if (!isSupabaseConfigured) throw new Error("Supabase no está configurado");
+    return await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: window.location.origin + "/start"
+      }
+    });
   };
 
   const verifyOtp = async ({ email, token }: { email: string; token: string }) => {
-    if (!isSupabaseConfigured) return { error: new Error("Supabase no está configurado") };
+    if (!isSupabaseConfigured) throw new Error("Supabase no está configurado");
     return await supabase.auth.verifyOtp({ email, token, type: 'email' });
   };
 
   const signInAnonymous = async () => {
-    if (!isSupabaseConfigured) return { error: new Error("Supabase no está configurado. Revisa las variables de entorno.") };
-    // Supabase supports anonymous sign-ins if enabled in the dashboard
-    if (supabase.auth.signInAnonymously === undefined) {
-      return { error: new Error("Metodo signInAnonymously no disponible en el cliente") };
-    }
+    if (!isSupabaseConfigured) throw new Error("Supabase no está configurado");
     return await supabase.auth.signInAnonymously();
   };
 
   const signOut = async () => {
-    return await supabase.auth.signOut();
+    if (!isSupabaseConfigured) return;
+    await supabase.auth.signOut();
+    setSession(null);
+    setUser(null);
   };
 
   return {
     isLoading,
     isAuthenticated: !!session,
     user,
+    session,
     signIn,
     verifyOtp,
     signInAnonymous,
     signOut,
+    isConfigured: isSupabaseConfigured
   };
 }
