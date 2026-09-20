@@ -9,7 +9,7 @@ import { useNavigate, useSearchParams } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
 
 function AuthContent({ redirectAfterAuth = "/start" }: { redirectAfterAuth?: string }) {
-  const { isLoading: authLoading, isAuthenticated, signInWithPassword, verifyOtp, isConfigured, user } = useAuth();
+  const { isLoading: authLoading, isAuthenticated, signInWithPassword, verifyOtp, isConfigured, user, signOut } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const returnTo = searchParams.get("returnTo") || redirectAfterAuth;
@@ -22,8 +22,8 @@ function AuthContent({ redirectAfterAuth = "/start" }: { redirectAfterAuth?: str
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
-    if (!authLoading && isAuthenticated) {
-      if (user?.isVerified) {
+    if (!authLoading && isAuthenticated && user) {
+      if (user.isVerified) {
         navigate(returnTo);
       } else {
         setStep("otp");
@@ -123,7 +123,7 @@ function AuthContent({ redirectAfterAuth = "/start" }: { redirectAfterAuth?: str
             {status === "error" && <p className="text-xs text-red-600 bg-red-50 p-2 rounded">{errorMsg}</p>}
           </CardContent>
           <CardFooter className="flex flex-col gap-3">
-            <Button className="w-full" disabled={status === "loading"}>
+            <Button className="w-full h-11" disabled={status === "loading"}>
               {status === "loading" ? <Loader2 className="size-4 animate-spin" /> : "Continuar"}
             </Button>
             <Button type="button" variant="link" size="sm" onClick={() => navigate("/register")}>¿No tienes cuenta? Regístrate</Button>
@@ -136,17 +136,31 @@ function AuthContent({ redirectAfterAuth = "/start" }: { redirectAfterAuth?: str
       <form onSubmit={handleOtpSubmit}>
         <CardHeader className="space-y-1">
           <div className="flex items-center justify-between"><CardTitle className="text-xl">Verifica tu correo</CardTitle></div>
-          <CardDescription>Escribe el código enviado a <span className="text-slate-950">{user?.email || email}</span>.</CardDescription>
+          <CardDescription>Escribe el código enviado a <span className="text-slate-950 font-medium">{user?.email || email}</span>.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6 flex flex-col items-center">
           <InputOTP value={otp} onChange={setOtp} maxLength={6} onComplete={() => handleOtpSubmit()}>
             <InputOTPGroup className="gap-2">
-              {Array.from({ length: 6 }).map((_, i) => <InputOTPSlot key={i} index={i} className="size-12 border-slate-300 rounded-md" />)}
+              {Array.from({ length: 6 }).map((_, i) => <InputOTPSlot key={i} index={i} className="size-12 border-slate-300 rounded-md text-lg" />)}
             </InputOTPGroup>
           </InputOTP>
-          {status === "error" && <p className="text-xs text-red-600">{errorMsg}</p>}
+          {status === "error" && <p className="text-xs text-red-600 font-medium bg-red-50 p-2 rounded w-full text-center">{errorMsg}</p>}
         </CardContent>
-        <CardFooter><Button className="w-full" disabled={status === "loading" || otp.length !== 6}>Verificar código</Button></CardFooter>
+        <CardFooter className="flex flex-col gap-3">
+          <Button className="w-full h-11" disabled={status === "loading" || otp.length !== 6}>
+            {status === "loading" ? <Loader2 className="size-4 animate-spin" /> : "Verificar código"}
+          </Button>
+          <button
+            type="button"
+            className="text-xs text-slate-400 hover:text-slate-600 transition-colors"
+            onClick={async () => {
+              await signOut();
+              setStep("password");
+            }}
+          >
+            ¿Usar otra cuenta? Salir
+          </button>
+        </CardFooter>
       </form>
     );
   };
