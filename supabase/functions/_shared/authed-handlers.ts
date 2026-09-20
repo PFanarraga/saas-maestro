@@ -1,89 +1,20 @@
-// Port of src/convex/platform.ts, superadmin.ts, users.ts (authed endpoints).
 import { sql, now, camelize, camelizeAll, sanitizeText, BAD_REQUEST, type Row } from "./db.ts";
-import { audit, getAccessContext, requireSuperAdmin, requireUser, type AccessContext } from "./auth.ts";
+import { audit, getAccessContext, requireSuperAdmin, requireUser, type AccessContext, requireTenantMember, requireTenantOwner, resolveTenantId, requirePermission } from "./auth.ts";
 import { DEFAULT_HOMEPAGE_BLOCKS, DEFAULT_THEMES, PLAN_PRESETS } from "./constants.ts";
+import { getAdminClient } from "./db.ts";
 
 // ---------------------------------------------------------------------------
-// Bootstrap: the FIRST user to sign in becomes the platform Super Admin.
+// Helpers
 // ---------------------------------------------------------------------------
-const SUPERUSER_EMAIL = "pedrofanarraga@gmail.com";
-
-export async function bootstrap(req: Request, args: { name?: string; tosAccepted?: boolean; marketingAccepted?: boolean }) {
-  const access = await requireUser(req);
-  if (access.user.is_anonymous) throw BAD_REQUEST("Anonymous users cannot bootstrap the platform");
-
-  // Update TOS/Marketing preferences if provided
-  if (args.tosAccepted !== undefined || args.marketingAccepted !== undefined) {
-    await sql`
-      update public.app_users
-      set tos_accepted = coalesce(${args.tosAccepted ?? null}, tos_accepted),
-          marketing_accepted = coalesce(${args.marketingAccepted ?? null}, marketing_accepted)
-      where id = ${access.userId}
-    `;
-  }
-
-  // Seed platform defaults (plans + feature flags) once.
-  const existingPlan = await sql`select 1 from public.plans where code = 'FREE' limit 1`;
-  if (!existingPlan[0]) {
-    for (const [code, limits] of Object.entries(PLAN_PRESETS)) {
-      await sql`
-        insert into public.plans (code, name, price_monthly, currency, limits, is_active)
-        values (${code}, ${code.charAt(0) + code.slice(1).toLowerCase()},
-                ${code === "FREE" ? 0 : code === "BASIC" ? 19 : code === "PRO" ? 49 : code === "BUSINESS" ? 99 : 249},
-                'USD', ${JSON.stringify(limits)}::jsonb, true)
-        on conflict (code) do nothing
-      `;
-    }
-    const flags: Array<[string, boolean, string]> = [
-      ["whatsapp_enabled", true, "Botones y mensajería de WhatsApp"],
-      ["coupons_enabled", true, "Cupones de descuento"],
-      ["custom_domains", true, "Dominios personalizados por tienda"],
-      ["advanced_analytics", true, "Analítica avanzada y embudo"],
-      ["api_access", false, "API pública por tienda"],
-    ];
-    for (const [key, enabled, description] of flags) {
-      await sql`insert into public.feature_flags (key, enabled, description) values (${key}, ${enabled}, ${description}) on conflict (key) do nothing`;
-    }
-  }
-
-  // Authorize Super Admin based on exact email.
-  if (access.user.email?.toLowerCase() === SUPERUSER_EMAIL.toLowerCase()) {
-    if (!access.user.platform_role) {
-      const name = args.name ?? access.user.name ?? access.user.email ?? "Super Admin";
-      await sql`update public.app_users set platform_role = 'super_admin', role = 'admin', name = ${name} where id = ${access.userId}`;
-      await audit({
-        actorId: access.userId,
-        actorLabel: access.user.email ?? access.userId,
-        action: "ADMIN_BOOTSTRAP",
-        resource: "platform",
-        newData: { bootstrap: true },
-      });
-      const refreshed = await sql`select * from public.app_users where id = ${access.userId} limit 1`;
-      return { user: shapeUser(refreshed[0]) };
-    }
-  } else {
-    // If not the authorized email, ensure they ARE NOT super admin (self-healing if logic changed)
-    if (access.user.platform_role === 'super_admin') {
-      await sql`update public.app_users set platform_role = null where id = ${access.userId}`;
-      const refreshed = await sql`select * from public.app_users where id = ${access.userId} limit 1`;
-      return { user: shapeUser(refreshed[0]) };
-    }
-  }
-
-  // Mark as verified on successful bootstrap/access if they are not anonymous
-  if (!access.user.is_verified) {
-    await sql`update public.app_users set is_verified = true where id = ${access.userId}`;
-  }
-
-  return { user: shapeUser(access.user) };
-}
-
 function shapeUser(u: Row | null | undefined) {
   if (!u) return null;
   return {
     id: u.id,
     name: u.name ?? null,
+    firstName: u.first_name ?? null,
+    lastName: u.last_name ?? null,
     email: u.email ?? null,
+    phone: u.phone ?? null,
     image: u.image ?? null,
     isAnonymous: u.is_anonymous ?? false,
     role: u.role ?? null,
@@ -91,12 +22,28 @@ function shapeUser(u: Row | null | undefined) {
     isVerified: u.is_verified ?? false,
     tosAccepted: u.tos_accepted ?? false,
     marketingAccepted: u.marketing_accepted ?? false,
+    status: u.is_blocked ? 'blocked' : 'active',
+    createdAt: u.created_at,
   };
 }
 
 export async function currentUser(req: Request) {
   const access = await getAccessContext(req);
   if (!access) return null;
+
+  // Platform-wide Maintenance Check
+  if (!access.isSuperAdmin) {
+    const maintenance = await getSetting('maintenance_mode');
+    if (maintenance?.value === true) {
+      throw new Error("MAINTENANCE_MODE_ACTIVE");
+    }
+  }
+
+  // Security: Check if user is blocked
+  if (access.user.is_blocked) {
+    throw new Error("USER_BLOCKED");
+  }
+
   return shapeUser(access.user);
 }
 
@@ -116,12 +63,310 @@ export async function myAccess(req: Request) {
     tenantName: tenant?.name ?? null,
     tenantSlug: tenant?.slug ?? null,
     tenantStatus: tenant?.status ?? null,
+    permissions: access.membership?.permissions ?? [],
   };
+}
+
+// ---------------------------------------------------------------------------
+// Platform Users Management
+// ---------------------------------------------------------------------------
+export async function listPlatformUsers(req: Request) {
+  await requireSuperAdmin(req);
+  const rows = await sql`
+    select u.*, count(tm.id)::int as tenant_count
+    from public.app_users u
+    left join public.tenant_members tm on tm.user_id = u.id
+    group by u.id
+    order by u.created_at desc
+    limit 200
+  `;
+  return camelizeAll(rows).map(shapeUser);
+}
+
+export async function setUserStatus(req: Request, args: { userId: string; status: 'active' | 'blocked' }) {
+  const access = await requireSuperAdmin(req);
+  const isBlocked = args.status === 'blocked';
+
+  // Security: Cannot block self
+  if (args.userId === access.userId) throw BAD_REQUEST("No puedes bloquear tu propia cuenta");
+
+  await sql`update public.app_users set is_blocked = ${isBlocked} where id = ${args.userId}`;
+
+  await audit({
+    actorId: access.userId,
+    actorLabel: access.user.email ?? "admin",
+    action: isBlocked ? "USER_BLOCKED" : "USER_UNBLOCKED",
+    resource: "user",
+    resourceId: args.userId,
+    newData: { status: args.status }
+  });
+
+  return { ok: true };
+}
+
+export async function setPlatformRole(req: Request, args: { userId: string; role: string | null }) {
+  const access = await requireSuperAdmin(req);
+
+  // Security rules
+  if (args.role === 'super_admin') throw BAD_REQUEST("Solo se puede asignar super_admin mediante base de datos");
+
+  const user = await sql`select platform_role from public.app_users where id = ${args.userId} limit 1`;
+  if (!user[0]) throw BAD_REQUEST("Usuario no encontrado");
+
+  await sql`update public.app_users set platform_role = ${args.role} where id = ${args.userId}`;
+
+  await audit({
+    actorId: access.userId,
+    actorLabel: access.user.email ?? "admin",
+    action: "ROLE_CHANGED",
+    resource: "user",
+    resourceId: args.userId,
+    oldData: { role: user[0].platform_role },
+    newData: { role: args.role }
+  });
+
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Business: Tenants, Plans & Subscriptions
+// ---------------------------------------------------------------------------
+export async function listTenants(req: Request) {
+  await requireSuperAdmin(req);
+  const rows = await sql`
+    select t.*, count(o.id)::int as order_count, coalesce(sum(o.total), 0) as gmv
+    from public.tenants t
+    left join public.orders o on o.tenant_id = t.id and o.status in ('paid','processing','ready','shipped','delivered')
+    group by t.id
+    order by t.created_at desc
+  `;
+  return camelizeAll(rows);
 }
 
 export async function listPlans() {
   const rows = await sql`select * from public.plans order by price_monthly asc`;
   return camelizeAll(rows);
+}
+
+export async function listGlobalSubscriptions(req: Request) {
+  await requireSuperAdmin(req);
+  const rows = await sql`
+    select s.*, t.name as tenant_name, u.email as owner_email, p.price_monthly, p.currency
+    from public.subscriptions s
+    join public.tenants t on t.id = s.tenant_id
+    join public.plans p on p.code = s.plan_code
+    left join public.tenant_members tm on tm.tenant_id = t.id and tm.role = 'owner'
+    left join public.app_users u on u.id = tm.user_id
+    order by s.started_at desc
+  `;
+  return camelizeAll(rows);
+}
+
+// ---------------------------------------------------------------------------
+// Operations: Orders & Payments (Financial Ledger)
+// ---------------------------------------------------------------------------
+export async function globalOrders(req: Request) {
+  await requireSuperAdmin(req);
+  const rows = await sql`
+    select o.*, t.name as tenant_name
+    from public.orders o
+    left join public.tenants t on t.id = o.tenant_id
+    order by o.created_at desc limit 200
+  `;
+  return camelizeAll(rows);
+}
+
+export async function listGlobalPayments(req: Request) {
+  await requireSuperAdmin(req);
+  const rows = await sql`
+    select p.*, t.name as tenant_name, o.customer_email, o.number as order_number
+    from public.payments p
+    join public.tenants t on t.id = p.tenant_id
+    left join public.orders o on o.id = p.order_id
+    order by p.created_at desc
+    limit 200
+  `;
+  return camelizeAll(rows);
+}
+
+export async function createPaymentAdjustment(req: Request, args: {
+  originalPaymentId: string; amount: number; reason: string; type: 'refund' | 'adjustment'
+}) {
+  const access = await requireSuperAdmin(req);
+  const original = await sql`select * from public.payments where id = ${args.originalPaymentId} limit 1`;
+  if (!original[0]) throw BAD_REQUEST("Pago original no encontrado");
+
+  // Historic payments are immutable. Adjustments are NEW records.
+  const adjustment = await sql`
+    insert into public.payments (tenant_id, order_id, amount, currency, status, provider, raw, created_at)
+    values (${original[0].tenant_id}, ${original[0].order_id}, ${args.amount}, ${original[0].currency}, 'succeeded', 'system_adjustment',
+            ${JSON.stringify({ reason: args.reason, type: args.type, original_id: args.originalPaymentId })}, ${now()})
+    returning *
+  `;
+
+  await audit({
+    actorId: access.userId,
+    actorLabel: access.user.email ?? "admin",
+    action: args.type === 'refund' ? "PAYMENT_REFUNDED" : "PAYMENT_ADJUSTMENT",
+    resource: "payment",
+    resourceId: original[0].id,
+    newData: { adjustmentId: adjustment[0].id, amount: args.amount, reason: args.reason }
+  });
+
+  return camelize(adjustment[0]);
+}
+
+// ---------------------------------------------------------------------------
+// Support System
+// ---------------------------------------------------------------------------
+export async function listSupportTickets(req: Request) {
+  await requireSuperAdmin(req);
+  const rows = await sql`
+    select st.*, t.name as tenant_name, u.email as user_email, u.name as user_name, admin.name as assigned_name
+    from public.support_tickets st
+    left join public.tenants t on t.id = st.tenant_id
+    left join public.app_users u on u.id = st.user_id
+    left join public.app_users admin on admin.id = st.assigned_to
+    order by
+      case when st.status = 'open' then 0 when st.status = 'in_progress' then 1 when st.status = 'waiting_customer' then 2 else 3 end,
+      st.created_at desc
+  `;
+  return camelizeAll(rows);
+}
+
+export async function getSupportTicketDetail(req: Request, ticketId: string) {
+  const access = await requireUser(req);
+  const rows = await sql`
+    select st.*, t.name as tenant_name, u.email as user_email, u.name as user_name
+    from public.support_tickets st
+    left join public.tenants t on t.id = st.tenant_id
+    left join public.app_users u on u.id = st.user_id
+    where st.id = ${ticketId}
+    limit 1
+  `;
+  const ticket = rows[0];
+  if (!ticket) throw BAD_REQUEST("Ticket no encontrado");
+
+  // Authorization: Super Admin or creator
+  if (!access.isSuperAdmin && ticket.user_id !== access.userId) {
+    throw BAD_REQUEST("No tienes permiso para ver este ticket");
+  }
+
+  const messages = await sql`
+    select m.*, u.name as sender_name, u.email as sender_email
+    from public.support_ticket_messages m
+    left join public.app_users u on u.id = m.sender_user_id
+    where m.ticket_id = ${ticketId}
+    order by m.created_at asc
+  `;
+
+  return {
+    ticket: camelize(ticket),
+    messages: camelizeAll(messages)
+  };
+}
+
+export async function createSupportTicket(req: Request, args: {
+  subject: string; description: string; category: string; priority?: string; tenantId?: string
+}) {
+  const access = await requireUser(req);
+  const t = now();
+
+  // Use sequence serial for ticket number
+  const ticket = await sql`
+    insert into public.support_tickets (tenant_id, user_id, subject, description, category, priority, status, created_at, updated_at)
+    values (${args.tenantId ?? access.tenantId}, ${access.userId}, ${args.subject}, ${args.description}, ${args.category}, ${args.priority ?? 'normal'}, 'open', ${t}, ${t})
+    returning *
+  `;
+
+  await sql`
+    insert into public.support_ticket_messages (ticket_id, sender_user_id, sender_type, message, created_at)
+    values (${ticket[0].id}, ${access.userId}, 'customer', ${args.description}, ${t})
+  `;
+
+  return camelize(ticket[0]);
+}
+
+export async function replyToSupportTicket(req: Request, args: { ticketId: string; message: string; attachments?: string[] }) {
+  const access = await requireUser(req);
+  const t = now();
+  const type = access.isSuperAdmin ? 'admin' : 'customer';
+
+  await sql`
+    insert into public.support_ticket_messages (ticket_id, sender_user_id, sender_type, message, attachments, created_at)
+    values (${args.ticketId}, ${access.userId}, ${type}, ${args.message}, ${args.attachments ?? null}, ${t})
+  `;
+
+  await sql`
+    update public.support_tickets
+    set status = ${access.isSuperAdmin ? 'in_progress' : 'waiting_customer'},
+        updated_at = ${t}
+    where id = ${args.ticketId}
+  `;
+
+  return { ok: true };
+}
+
+export async function updateSupportTicketStatus(req: Request, args: { ticketId: string; status: string; assignedTo?: string; priority?: string }) {
+  await requireSuperAdmin(req);
+  const t = now();
+
+  await sql`
+    update public.support_tickets
+    set status = coalesce(${args.status ?? null}, status),
+        priority = coalesce(${args.priority ?? null}, priority),
+        assigned_to = coalesce(${args.assignedTo ?? null}, assigned_to),
+        resolved_at = ${args.status === 'resolved' ? t : (args.status === 'open' ? null : sql`resolved_at`)},
+        closed_at = ${args.status === 'closed' ? t : (args.status === 'open' ? null : sql`closed_at`)},
+        updated_at = ${t}
+    where id = ${args.ticketId}
+  `;
+
+  await audit({
+    actorId: (await requireUser(req)).userId,
+    actorLabel: "admin",
+    action: "TICKET_STATUS_CHANGED",
+    resource: "ticket",
+    resourceId: args.ticketId,
+    newData: { status: args.status, assignedTo: args.assignedTo }
+  });
+
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Platform Settings & Feature Flags
+// ---------------------------------------------------------------------------
+export async function getPlatformSettings(req: Request) {
+  await requireSuperAdmin(req);
+  const rows = await sql`select * from public.platform_settings order by key asc`;
+  return camelizeAll(rows);
+}
+
+export async function setPlatformSetting(req: Request, args: { key: string; value: any }) {
+  await requireSuperAdmin(req);
+
+  await sql`
+    insert into public.platform_settings (key, value)
+    values (${args.key}, ${JSON.stringify(args.value)}::jsonb)
+    on conflict (key) do update set value = excluded.value
+  `;
+
+  await audit({
+    actorId: (await requireUser(req)).userId,
+    actorLabel: "admin",
+    action: "PLATFORM_SETTING_CHANGED",
+    resource: "setting",
+    resourceId: args.key,
+    newData: { value: args.value }
+  });
+
+  return { ok: true };
+}
+
+export async function getSetting(key: string) {
+  const rows = await sql`select value from public.platform_settings where key = ${key} limit 1`;
+  return rows[0] ?? null;
 }
 
 export async function listFeatureFlags(req: Request) {
@@ -130,46 +375,39 @@ export async function listFeatureFlags(req: Request) {
   return camelizeAll(rows);
 }
 
-export async function setFeatureFlag(req: Request, args: { key: string; enabled: boolean }) {
-  const access = await requireSuperAdmin(req);
-  const rows = await sql`update public.feature_flags set enabled = ${args.enabled} where key = ${args.key} returning *`;
-  if (rows[0]) {
-    await audit({
-      actorId: access.userId,
-      actorLabel: access.user.email ?? "super_admin",
-      action: "FEATURE_FLAG_CHANGED",
-      resource: "feature_flag",
-      resourceId: args.key,
-      newData: { enabled: args.enabled },
-    });
-  }
+export async function setFeatureFlag(req: Request, args: {
+  key: string; enabled: boolean; name?: string; description?: string; environment?: string
+}) {
+  await requireSuperAdmin(req);
+  const t = now();
+
+  const rows = await sql`
+    insert into public.feature_flags (key, enabled, description, environment, updated_at)
+    values (${args.key}, ${args.enabled}, ${args.description ?? ''}, ${args.environment ?? 'production'}, ${t})
+    on conflict (key) do update
+    set enabled = excluded.enabled,
+        description = coalesce(${args.description ?? null}, feature_flags.description),
+        environment = coalesce(${args.environment ?? null}, feature_flags.environment),
+        updated_at = ${t}
+    returning *
+  `;
+
+  await audit({
+    actorId: (await requireUser(req)).userId,
+    actorLabel: "admin",
+    action: "FEATURE_FLAG_CHANGED",
+    resource: "feature_flag",
+    resourceId: args.key,
+    newData: { enabled: args.enabled }
+  });
+
   return { ok: true };
 }
 
-/** Links a signed-in user to a tenant membership by email (owner invite claim). */
-export async function claimMembership(req: Request) {
-  const access = await requireUser(req);
-  if (!access.user.email) return null;
-  const email = access.user.email.toLowerCase();
-  const invites = await sql`select * from public.tenant_members where user_id = ${access.userId} limit 1`;
-  if (invites[0]) return { tenantId: invites[0].tenant_id };
-  const pending = await sql`
-    select * from public.tenant_members where user_id is null and lower(user_email) = ${email} order by invited_at asc limit 1
-  `;
-  const unclaimed = pending[0];
-  if (unclaimed) {
-    await sql`update public.tenant_members set user_id = ${access.userId}, joined_at = ${now()} where id = ${unclaimed.id}`;
-    if (!access.user.name && unclaimed.user_name) {
-      await sql`update public.app_users set name = ${unclaimed.user_name} where id = ${access.userId}`;
-    }
-    return { tenantId: unclaimed.tenant_id };
-  }
-  return null;
-}
+// ---------------------------------------------------------------------------
+// Existing Platform Admin Logic (Ported/Refactored)
+// ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// Global stats (super admin)
-// ---------------------------------------------------------------------------
 export async function globalStats(req: Request) {
   await requireSuperAdmin(req);
   const thirtyDaysAgo = now() - (30 * 86400000);
@@ -182,23 +420,17 @@ export async function globalStats(req: Request) {
   const recentTenantsCount = await sql`select count(*)::int as n from public.tenants where created_at > ${thirtyDaysAgo}`;
   const recentOrdersAgg = await sql`select count(*)::int as n, sum(total) as total from public.orders where created_at > ${thirtyDaysAgo} and status in ('paid','processing','ready','shipped','delivered')`;
 
-  // Plan distribution
   const planMap: Record<string, number> = {};
-  tenants.forEach((t: any) => {
-    planMap[t.plan_code] = (planMap[t.plan_code] || 0) + t.n;
-  });
+  tenants.forEach((t: any) => { planMap[t.plan_code] = (planMap[t.plan_code] || 0) + t.n; });
 
   const tenantStatusMap: Record<string, number> = {};
-  tenants.forEach((t: any) => {
-    tenantStatusMap[t.status] = (tenantStatusMap[t.status] || 0) + t.n;
-  });
+  tenants.forEach((t: any) => { tenantStatusMap[t.status] = (tenantStatusMap[t.status] || 0) + t.n; });
 
   const revenue = orders
     .filter((o: any) => ["paid", "processing", "ready", "shipped", "delivered"].includes(o.status))
     .reduce((s: number, o: any) => s + Number(o.total), 0);
   const orderCount = orders.reduce((s: number, o: any) => s + o.n, 0);
 
-  // Series for charts (last 14 days)
   const series = await sql`
     select
       date_trunc('day', to_timestamp(created_at / 1000)) as day,
@@ -210,10 +442,7 @@ export async function globalStats(req: Request) {
     order by day asc
   `;
 
-  // Recent activity
-  const topTenants = await sql`
-    select id, name, slug, plan_code, status, created_at from public.tenants order by created_at desc limit 5
-  `;
+  const topTenants = await sql`select id, name, slug, plan_code, status, created_at from public.tenants order by created_at desc limit 5`;
   const topOrders = await sql`
     select o.id, o.number, o.total, o.currency, o.status, o.created_at, t.name as tenant_name
     from public.orders o
@@ -234,26 +463,9 @@ export async function globalStats(req: Request) {
       orders: s.orders,
       revenue: Number(s.revenue ?? 0)
     })),
-    recent: {
-      tenants: camelizeAll(topTenants),
-      orders: camelizeAll(topOrders)
-    },
-    growth: {
-      newTenants30d: recentTenantsCount[0].n,
-      newOrders30d: recentOrdersAgg[0].n,
-      revenue30d: Number(recentOrdersAgg[0].total ?? 0)
-    }
+    recent: { tenants: camelizeAll(topTenants), orders: camelizeAll(topOrders) },
+    growth: { newTenants30d: recentTenantsCount[0].n, newOrders30d: recentOrdersAgg[0].n, revenue30d: Number(recentOrdersAgg[0].total ?? 0) }
   };
-}
-
-export async function globalOrders(req: Request) {
-  await requireSuperAdmin(req);
-  const rows = await sql`
-    select o.*, t.name as tenant_name from public.orders o
-    left join public.tenants t on t.id = o.tenant_id
-    order by o.created_at desc limit 100
-  `;
-  return camelizeAll(rows).map((o: any) => ({ ...o, tenantName: o.tenantName ?? "—" }));
 }
 
 export async function auditLogs(req: Request, args: { tenantId?: string }) {
@@ -261,15 +473,6 @@ export async function auditLogs(req: Request, args: { tenantId?: string }) {
   const rows = args.tenantId
     ? await sql`select * from public.audit_logs where tenant_id = ${args.tenantId} order by created_at desc limit 100`
     : await sql`select * from public.audit_logs order by created_at desc limit 100`;
-  return camelizeAll(rows);
-}
-
-// ---------------------------------------------------------------------------
-// Super admin tenant management
-// ---------------------------------------------------------------------------
-export async function listTenants(req: Request) {
-  await requireSuperAdmin(req);
-  const rows = await sql`select * from public.tenants order by created_at desc`;
   return camelizeAll(rows);
 }
 
@@ -300,7 +503,7 @@ export async function createTenant(req: Request, args: {
   adminName?: string; whatsappPhone?: string; currency?: string; isDemo?: boolean;
   businessName?: string; category?: string; description?: string; country?: string; city?: string; address?: string; businessPhone?: string;
 }) {
-  const access = await requireSuperAdmin(req);
+  await requireSuperAdmin(req);
   const slug = args.slug.toLowerCase().trim();
   const exists = await sql`select 1 from public.tenants where slug = ${slug} limit 1`;
   if (exists[0]) throw BAD_REQUEST("El slug ya está en uso");
@@ -349,8 +552,8 @@ export async function createTenant(req: Request, args: {
     values (${tenantId}, ${zone[0].id}, 'Recojo en tienda', 'pickup', 0, 'Hoy', true)`;
 
   await audit({
-    actorId: access.userId,
-    actorLabel: access.user.email ?? "super_admin",
+    actorId: (await requireUser(req)).userId,
+    actorLabel: "super_admin",
     tenantId,
     action: "TENANT_CREATED",
     resource: "tenant",
@@ -404,7 +607,6 @@ export async function changeTenantPlan(req: Request, args: { tenantId: string; p
   return { ok: true };
 }
 
-/** Removes tenant-scoped data. Super admin only. Cascades handle most tables. */
 export async function deleteTenant(req: Request, tenantId: string) {
   const access = await requireSuperAdmin(req);
   const rows = await sql`select * from public.tenants where id = ${tenantId} limit 1`;
@@ -421,11 +623,6 @@ export async function deleteTenant(req: Request, tenantId: string) {
   });
   return { ok: true };
 }
-
-// ---------------------------------------------------------------------------
-// Staff Management (Owner only)
-// ---------------------------------------------------------------------------
-import { getAdminClient } from "./db.ts";
 
 export async function listStaff(req: Request) {
   const access = await requireTenantMember(req);
@@ -447,7 +644,6 @@ export async function saveStaff(req: Request, args: {
   const tenantId = resolveTenantId(access);
   const t = now();
 
-  // If password/username is provided, we use the virtual email logic
   const isInternal = !!args.username && !!args.password;
   const email = isInternal
     ? `${args.username!.toLowerCase()}@${access.tenantSlug}.staff.shoply`
@@ -483,7 +679,6 @@ export async function saveStaff(req: Request, args: {
       `;
     }
   } else {
-    // Normal invite flow
     if (existing[0]) {
       await sql`
         update public.tenant_members
@@ -497,26 +692,20 @@ export async function saveStaff(req: Request, args: {
       `;
     }
   }
-
   return { ok: true };
 }
 
 export async function deleteStaff(req: Request, memberId: string) {
   const access = await requireTenantOwner(req);
   const tenantId = resolveTenantId(access);
-
   const member = await sql`select * from public.tenant_members where id = ${memberId} and tenant_id = ${tenantId} limit 1`;
   if (!member[0]) throw BAD_REQUEST("Member not found");
   if (member[0].role === 'owner') throw BAD_REQUEST("Cannot delete an owner");
-
   await sql`delete from public.tenant_members where id = ${memberId}`;
-
-  // If it was an internal user, we might want to delete from auth.users too
   if (member[0].username && member[0].user_id) {
     const admin = getAdminClient();
     await admin.auth.admin.deleteUser(member[0].user_id);
   }
-
   return { ok: true };
 }
 

@@ -67,11 +67,10 @@ app.delete("/cart", async (c) => c.json(await pub.clearCart({
 })));
 
 // ---------------------------------------------------------------------------
-// Authed: platform
+// Authed: platform (Super Admin)
 // ---------------------------------------------------------------------------
 app.get("/me/user", async (c) => c.json(await authed.currentUser(c.req.raw)));
 app.get("/me/access", async (c) => c.json(await authed.myAccess(c.req.raw)));
-app.post("/me/bootstrap", async (c) => c.json(await authed.bootstrap(c.req.raw, await c.req.json().catch(() => ({})))));
 app.post("/me/claim-membership", async (c) => c.json(await authed.claimMembership(c.req.raw)));
 
 app.get("/platform/plans", async (c) => c.json(await authed.listPlans()));
@@ -80,6 +79,24 @@ app.post("/platform/feature-flags", async (c) => c.json(await authed.setFeatureF
 app.get("/platform/global-stats", async (c) => c.json(await authed.globalStats(c.req.raw)));
 app.get("/platform/global-orders", async (c) => c.json(await authed.globalOrders(c.req.raw)));
 app.get("/platform/audit-logs", async (c) => c.json(await authed.auditLogs(c.req.raw, { tenantId: c.req.query("tenantId") ?? undefined })));
+
+// New Platform Management
+app.get("/platform/users", async (c) => c.json(await authed.listPlatformUsers(c.req.raw)));
+app.patch("/platform/users/:userId/status", async (c) => c.json(await authed.setUserStatus(c.req.raw, { userId: c.req.param("userId"), ...(await c.req.json()) })));
+app.patch("/platform/users/:userId/role", async (c) => c.json(await authed.setPlatformRole(c.req.raw, { userId: c.req.param("userId"), ...(await c.req.json()) })));
+
+app.get("/platform/subscriptions", async (c) => c.json(await authed.listGlobalSubscriptions(c.req.raw)));
+app.get("/platform/payments", async (c) => c.json(await authed.listGlobalPayments(c.req.raw)));
+app.post("/platform/payments/adjustment", async (c) => c.json(await authed.createPaymentAdjustment(c.req.raw, await c.req.json())));
+
+app.get("/platform/support/tickets", async (c) => c.json(await authed.listSupportTickets(c.req.raw)));
+app.get("/platform/support/tickets/:id", async (c) => c.json(await authed.getSupportTicketDetail(c.req.raw, c.req.param("id"))));
+app.post("/platform/support/tickets", async (c) => c.json(await authed.createSupportTicket(c.req.raw, await c.req.json())));
+app.post("/platform/support/tickets/:id/reply", async (c) => c.json(await authed.replyToSupportTicket(c.req.raw, { ticketId: c.req.param("id"), ...(await c.req.json()) })));
+app.patch("/platform/support/tickets/:id/status", async (c) => c.json(await authed.updateSupportTicketStatus(c.req.raw, { ticketId: c.req.param("id"), ...(await c.req.json()) })));
+
+app.get("/platform/settings", async (c) => c.json(await authed.getPlatformSettings(c.req.raw)));
+app.post("/platform/settings", async (c) => c.json(await authed.setPlatformSetting(c.req.raw, await c.req.json())));
 
 // Super admin tenants
 app.get("/superadmin/tenants", async (c) => c.json(await authed.listTenants(c.req.raw)));

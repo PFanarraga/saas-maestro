@@ -18,15 +18,13 @@ const NAV_GROUPS = [
     label: "NEGOCIO",
     items: [
       { to: "/admin/tenants", label: "Tiendas", icon: Building2, end: false },
-      { to: "/admin/customers", label: "Clientes", icon: Users, end: false },
-      { to: "/admin/plans", label: "Planes", icon: CreditCard, end: false },
+      { to: "/admin/users", label: "Usuarios", icon: Users, end: false },
       { to: "/admin/subscriptions", label: "Suscripciones", icon: History, end: false },
     ]
   },
   {
     label: "OPERACIONES",
     items: [
-      { to: "/admin/orders", label: "Pedidos", icon: ShoppingCart, end: false },
       { to: "/admin/payments", label: "Pagos", icon: CreditCard, end: false },
       { to: "/admin/support", label: "Soporte", icon: MessageSquare, end: false },
     ]

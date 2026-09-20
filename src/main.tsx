@@ -13,6 +13,13 @@ const Start = lazy(() => import("./pages/Start.tsx"));
 const SuperAdminLayout = lazy(() => import("./pages/superadmin/SuperAdminLayout.tsx"));
 const PlatformDashboard = lazy(() => import("./pages/superadmin/PlatformDashboard.tsx"));
 const TenantsList = lazy(() => import("./pages/superadmin/TenantsList.tsx"));
+const PlatformUsers = lazy(() => import("./pages/superadmin/PlatformUsers.tsx"));
+const SubscriptionsManagement = lazy(() => import("./pages/superadmin/SubscriptionsManagement.tsx"));
+const GlobalPayments = lazy(() => import("./pages/superadmin/GlobalPayments.tsx"));
+const SupportCenter = lazy(() => import("./pages/superadmin/SupportCenter.tsx"));
+const TicketDetail = lazy(() => import("./pages/superadmin/TicketDetail.tsx"));
+const PlatformSettings = lazy(() => import("./pages/superadmin/PlatformSettings.tsx"));
+const FeatureFlags = lazy(() => import("./pages/superadmin/FeatureFlags.tsx"));
 const AuditLogs = lazy(() => import("./pages/superadmin/AuditLogs.tsx"));
 const SuperAuth = lazy(() => import("./pages/superadmin/SuperAuth.tsx"));
 const StaffAuth = lazy(() => import("./pages/admin/StaffAuth.tsx"));
@@ -125,7 +132,21 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/admin" element={<RequireAuth><SuperAdminLayout /></RequireAuth>}>
               <Route index element={<PlatformDashboard />} />
               <Route path="tenants" element={<TenantsList />} />
+              <Route path="customers" element={<div className="p-8 text-muted-foreground italic">Listado de clientes finales (Próximamente)</div>} />
+              <Route path="users" element={<PlatformUsers />} />
+              <Route path="plans" element={<div className="p-8 text-muted-foreground italic">Gestor de planes (Próximamente)</div>} />
+              <Route path="subscriptions" element={<SubscriptionsManagement />} />
+
+              <Route path="orders" element={<div className="p-8 text-muted-foreground italic">Pedidos globales (Próximamente)</div>} />
+              <Route path="payments" element={<GlobalPayments />} />
+              <Route path="support" element={<SupportCenter />} />
+              <Route path="support/:id" element={<TicketDetail />} />
+
+              <Route path="analytics" element={<div className="p-8 text-muted-foreground italic">Analítica avanzada (Próximamente)</div>} />
               <Route path="audit" element={<AuditLogs />} />
+
+              <Route path="settings" element={<PlatformSettings />} />
+              <Route path="flags" element={<FeatureFlags />} />
               <Route path="*" element={<div className="p-8 text-muted-foreground italic">Módulo en construcción...</div>} />
             </Route>
 
