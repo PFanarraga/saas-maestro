@@ -3,39 +3,33 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { useAuth } from "@/hooks/use-auth";
-import { ArrowRight, Loader2, Mail, UserX, AlertCircle, CheckCircle2, ShieldAlert } from "lucide-react";
+import { Loader2, ShieldAlert } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
-import { toast } from "sonner";
 
 function AuthContent({ redirectAfterAuth = "/start" }: { redirectAfterAuth?: string }) {
-  const { isLoading: authLoading, isAuthenticated, signIn, signUp, signInWithPassword, verifyOtp, signInAnonymous, isConfigured, user } = useAuth();
+  const { isLoading: authLoading, isAuthenticated, signInWithPassword, verifyOtp, isConfigured, user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const returnTo = searchParams.get("returnTo") || redirectAfterAuth;
-  const isOwnerMode = searchParams.get("mode") === "owner";
 
-  const [step, setStep] = useState<"email" | "otp" | "password" | "signup">("email");
+  const [step, setStep] = useState<"password" | "otp">("password");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
-  const [tos, setTos] = useState(false);
-  const [marketing, setMarketing] = useState(true);
   const [otp, setOtp] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
-    if (!authLoading && isAuthenticated && user?.isVerified) {
-      navigate(returnTo);
+    if (!authLoading && isAuthenticated) {
+      if (user?.isVerified) {
+        navigate(returnTo);
+      } else {
+        setStep("otp");
+      }
     }
   }, [authLoading, isAuthenticated, navigate, returnTo, user]);
-
-  useEffect(() => {
-    if (isOwnerMode) setStep("password");
-    else setStep("email");
-  }, [isOwnerMode]);
 
   const apiUrl = import.meta.env.VITE_API_URL || "";
   const isUrlValid = apiUrl.endsWith("/functions/v1/api");
@@ -80,52 +74,20 @@ function AuthContent({ redirectAfterAuth = "/start" }: { redirectAfterAuth?: str
     );
   }
 
-  const handleEmailSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email) return;
-    setStatus("loading");
-    setErrorMsg("");
-    try {
-      const { error } = await signIn({ email });
-      if (error) throw error;
-      setStep("otp");
-      setStatus("idle");
-    } catch (err: any) {
-      console.error(err);
-      setStatus("error");
-      setErrorMsg(err.message || "No pudimos enviar el código. Verifica tu conexión.");
-    }
-  };
-
   const handleOtpSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (otp.length !== 6) return;
     setStatus("loading");
     setErrorMsg("");
     try {
-      const { error } = await verifyOtp({ email, token: otp });
+      const { error } = await verifyOtp({ email: user?.email || email, token: otp });
       if (error) throw error;
       setStatus("success");
-      // Navigation is handled by useEffect
     } catch (err: any) {
       console.error(err);
       setStatus("error");
       setErrorMsg("El código es incorrecto o ha expirado.");
       setOtp("");
-    }
-  };
-
-  const handleGuest = async () => {
-    setStatus("loading");
-    setErrorMsg("");
-    try {
-      const { error } = await signInAnonymous();
-      if (error) throw error;
-      setStatus("success");
-    } catch (err: any) {
-      console.error(err);
-      setStatus("error");
-      setErrorMsg(err.message || "Error al entrar como invitado.");
     }
   };
 
@@ -137,28 +99,10 @@ function AuthContent({ redirectAfterAuth = "/start" }: { redirectAfterAuth?: str
       const { error } = await signInWithPassword({ email, password });
       if (error) {
         if (error.message.includes("Invalid login credentials")) {
-          // If login fails, try to see if user exists, if not, maybe it's a signup intent
           throw new Error("Credenciales inválidas. ¿Aún no tienes cuenta?");
         }
         throw error;
       }
-      // If user is not verified, they need OTP
-    } catch (err: any) {
-      setStatus("error");
-      setErrorMsg(err.message);
-    }
-  };
-
-  const handleSignupSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!tos) { toast.error("Debes aceptar los términos y condiciones"); return; }
-    setStatus("loading");
-    setErrorMsg("");
-    try {
-      const { error } = await signUp({ email, password, name, tosAccepted: tos, marketingAccepted: marketing });
-      if (error) throw error;
-      setStep("otp");
-      setStatus("idle");
     } catch (err: any) {
       setStatus("error");
       setErrorMsg(err.message);
@@ -166,32 +110,6 @@ function AuthContent({ redirectAfterAuth = "/start" }: { redirectAfterAuth?: str
   };
 
   const renderForm = () => {
-    if (step === "email") {
-      return (
-        <form onSubmit={handleEmailSubmit}>
-          <CardHeader className="space-y-1">
-            <CardTitle className="text-xl text-center">Bienvenido</CardTitle>
-            <CardDescription className="text-center">Ingresa tu correo para recibir un código de acceso.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="relative">
-              <Mail className="absolute left-3 top-3 size-4 text-slate-400" />
-              <Input type="email" placeholder="nombre@ejemplo.com" className="pl-10" value={email} onChange={(e) => setEmail(e.target.value)} required />
-            </div>
-            {status === "error" && <p className="text-xs text-red-600 bg-red-50 p-2 rounded">{errorMsg}</p>}
-          </CardContent>
-          <CardFooter className="flex flex-col gap-3">
-            <Button className="w-full" disabled={status === "loading"}>
-              {status === "loading" ? <Loader2 className="size-4 animate-spin" /> : "Enviar código"}
-            </Button>
-            <div className="relative w-full"><div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div><div className="relative flex justify-center text-[10px] uppercase font-bold text-slate-400"><span className="bg-white px-2">O</span></div></div>
-            <Button type="button" variant="outline" className="w-full" onClick={handleGuest} disabled={status === "loading"}>Entrar como invitado</Button>
-            <Button type="button" variant="ghost" size="sm" onClick={() => { setStep("password"); navigate("?mode=owner"); }}>Soy dueño de tienda (Contraseña)</Button>
-          </CardFooter>
-        </form>
-      );
-    }
-
     if (step === "password") {
       return (
         <form onSubmit={handlePasswordSubmit}>
@@ -205,40 +123,10 @@ function AuthContent({ redirectAfterAuth = "/start" }: { redirectAfterAuth?: str
             {status === "error" && <p className="text-xs text-red-600 bg-red-50 p-2 rounded">{errorMsg}</p>}
           </CardContent>
           <CardFooter className="flex flex-col gap-3">
-            <Button className="w-full" disabled={status === "loading"}>Continuar</Button>
-            <Button type="button" variant="link" size="sm" onClick={() => setStep("signup")}>¿No tienes cuenta? Regístrate</Button>
-            <Button type="button" variant="ghost" size="sm" onClick={() => { setStep("email"); navigate("/auth"); }}>Volver a modo cliente</Button>
-          </CardFooter>
-        </form>
-      );
-    }
-
-    if (step === "signup") {
-      return (
-        <form onSubmit={handleSignupSubmit}>
-          <CardHeader className="space-y-1">
-            <CardTitle className="text-xl text-center">Crear Cuenta</CardTitle>
-            <CardDescription className="text-center">Únete a Shoply y lanza tu tienda.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Input placeholder="Nombre" value={name} onChange={(e) => setName(e.target.value)} required />
-            <Input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-            <Input type="password" placeholder="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} required />
-            <div className="space-y-2 pt-2">
-              <div className="flex items-start gap-2">
-                <input type="checkbox" id="tos" checked={tos} onChange={(e) => setTos(e.target.checked)} className="mt-1" />
-                <label htmlFor="tos" className="text-xs text-slate-600">He leído y acepto los términos de servicio y políticas de privacidad de Shoply.</label>
-              </div>
-              <div className="flex items-start gap-2">
-                <input type="checkbox" id="mkt" checked={marketing} onChange={(e) => setMarketing(e.target.checked)} className="mt-1" />
-                <label htmlFor="mkt" className="text-xs text-slate-600">Acepto recibir correos con actualizaciones y publicidad de la plataforma.</label>
-              </div>
-            </div>
-            {status === "error" && <p className="text-xs text-red-600 bg-red-50 p-2 rounded">{errorMsg}</p>}
-          </CardContent>
-          <CardFooter className="flex flex-col gap-3">
-            <Button className="w-full" disabled={status === "loading"}>Crear mi tienda</Button>
-            <Button type="button" variant="link" size="sm" onClick={() => setStep("password")}>¿Ya tienes cuenta? Ingresa</Button>
+            <Button className="w-full" disabled={status === "loading"}>
+              {status === "loading" ? <Loader2 className="size-4 animate-spin" /> : "Continuar"}
+            </Button>
+            <Button type="button" variant="link" size="sm" onClick={() => navigate("/register")}>¿No tienes cuenta? Regístrate</Button>
           </CardFooter>
         </form>
       );
@@ -248,7 +136,7 @@ function AuthContent({ redirectAfterAuth = "/start" }: { redirectAfterAuth?: str
       <form onSubmit={handleOtpSubmit}>
         <CardHeader className="space-y-1">
           <div className="flex items-center justify-between"><CardTitle className="text-xl">Verifica tu correo</CardTitle></div>
-          <CardDescription>Escribe el código enviado a <span className="text-slate-950">{email}</span>.</CardDescription>
+          <CardDescription>Escribe el código enviado a <span className="text-slate-950">{user?.email || email}</span>.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6 flex flex-col items-center">
           <InputOTP value={otp} onChange={setOtp} maxLength={6} onComplete={() => handleOtpSubmit()}>

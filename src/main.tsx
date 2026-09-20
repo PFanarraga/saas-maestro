@@ -115,7 +115,6 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/" element={<Landing />} />
             <Route path="/login" element={<AuthPage redirectAfterAuth="/start" />} />
             <Route path="/register" element={<RegisterWizard />} />
-            <Route path="/auth" element={<AuthPage redirectAfterAuth="/start" />} />
             <Route path="/start" element={<Start />} />
 
             {/* Super Admin */}

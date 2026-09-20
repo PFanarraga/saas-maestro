@@ -295,7 +295,7 @@ export default function RegisterWizard() {
                     <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Tu dirección pública:</p>
                     <p className="text-primary font-bold text-lg">{formData.slug}.shoply.app</p>
                   </div>
-                  <Button className="w-full" size="lg" onClick={() => navigate("/auth?mode=owner")}>Ir a Iniciar Sesión</Button>
+                  <Button className="w-full" size="lg" onClick={() => navigate("/login")}>Ir a Iniciar Sesión</Button>
                 </div>
               )}
 
