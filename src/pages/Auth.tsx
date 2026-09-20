@@ -7,6 +7,7 @@ import { ArrowRight, Loader2, Mail, UserX, AlertCircle, CheckCircle2, ShieldAler
 import { Suspense, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "sonner";
 
 function AuthContent({ redirectAfterAuth = "/start" }: { redirectAfterAuth?: string }) {
   const { isLoading: authLoading, isAuthenticated, signIn, signUp, signInWithPassword, verifyOtp, signInAnonymous, isConfigured, user } = useAuth();
@@ -78,6 +79,55 @@ function AuthContent({ redirectAfterAuth = "/start" }: { redirectAfterAuth?: str
       </div>
     );
   }
+
+  const handleEmailSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) return;
+    setStatus("loading");
+    setErrorMsg("");
+    try {
+      const { error } = await signIn({ email });
+      if (error) throw error;
+      setStep("otp");
+      setStatus("idle");
+    } catch (err: any) {
+      console.error(err);
+      setStatus("error");
+      setErrorMsg(err.message || "No pudimos enviar el código. Verifica tu conexión.");
+    }
+  };
+
+  const handleOtpSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (otp.length !== 6) return;
+    setStatus("loading");
+    setErrorMsg("");
+    try {
+      const { error } = await verifyOtp({ email, token: otp });
+      if (error) throw error;
+      setStatus("success");
+      // Navigation is handled by useEffect
+    } catch (err: any) {
+      console.error(err);
+      setStatus("error");
+      setErrorMsg("El código es incorrecto o ha expirado.");
+      setOtp("");
+    }
+  };
+
+  const handleGuest = async () => {
+    setStatus("loading");
+    setErrorMsg("");
+    try {
+      const { error } = await signInAnonymous();
+      if (error) throw error;
+      setStatus("success");
+    } catch (err: any) {
+      console.error(err);
+      setStatus("error");
+      setErrorMsg(err.message || "Error al entrar como invitado.");
+    }
+  };
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
