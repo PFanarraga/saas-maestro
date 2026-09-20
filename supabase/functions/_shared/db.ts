@@ -23,6 +23,23 @@ export const sql = postgres(connectionString, {
   },
 });
 
+// Admin client for Auth management
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.1";
+
+export const getAdminClient = () => {
+  const url = Deno.env.get("SUPABASE_URL") ?? "";
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  if (!url || !key) {
+    console.error("[db] Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+  }
+  return createClient(url, key, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  });
+};
+
 export type Row = Record<string, any>;
 
 /** Thrown by guards; mapped to HTTP status codes by the router. */

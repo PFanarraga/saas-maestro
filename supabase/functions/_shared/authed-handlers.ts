@@ -8,9 +8,19 @@ import { DEFAULT_HOMEPAGE_BLOCKS, DEFAULT_THEMES, PLAN_PRESETS } from "./constan
 // ---------------------------------------------------------------------------
 const SUPERUSER_EMAIL = "pedrofanarraga@gmail.com";
 
-export async function bootstrap(req: Request, args: { name?: string }) {
+export async function bootstrap(req: Request, args: { name?: string; tosAccepted?: boolean; marketingAccepted?: boolean }) {
   const access = await requireUser(req);
   if (access.user.is_anonymous) throw BAD_REQUEST("Anonymous users cannot bootstrap the platform");
+
+  // Update TOS/Marketing preferences if provided
+  if (args.tosAccepted !== undefined || args.marketingAccepted !== undefined) {
+    await sql`
+      update public.app_users
+      set tos_accepted = coalesce(${args.tosAccepted ?? null}, tos_accepted),
+          marketing_accepted = coalesce(${args.marketingAccepted ?? null}, marketing_accepted)
+      where id = ${access.userId}
+    `;
+  }
 
   // Seed platform defaults (plans + feature flags) once.
   const existingPlan = await sql`select 1 from public.plans where code = 'FREE' limit 1`;
@@ -60,6 +70,11 @@ export async function bootstrap(req: Request, args: { name?: string }) {
     }
   }
 
+  // Mark as verified on successful bootstrap/access if they are not anonymous
+  if (!access.user.is_verified) {
+    await sql`update public.app_users set is_verified = true where id = ${access.userId}`;
+  }
+
   return { user: shapeUser(access.user) };
 }
 
@@ -73,6 +88,9 @@ function shapeUser(u: Row | null | undefined) {
     isAnonymous: u.is_anonymous ?? false,
     role: u.role ?? null,
     platformRole: u.platform_role ?? null,
+    isVerified: u.is_verified ?? false,
+    tosAccepted: u.tos_accepted ?? false,
+    marketingAccepted: u.marketing_accepted ?? false,
   };
 }
 
@@ -342,6 +360,104 @@ export async function deleteTenant(req: Request, tenantId: string) {
     resourceId: tenantId,
     oldData: { name: tenant.name, slug: tenant.slug },
   });
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Staff Management (Owner only)
+// ---------------------------------------------------------------------------
+import { getAdminClient } from "./db.ts";
+
+export async function listStaff(req: Request) {
+  const access = await requireTenantMember(req);
+  const tenantId = resolveTenantId(access);
+  const rows = await sql`
+    select tm.*, u.email, u.name as user_name_real
+    from public.tenant_members tm
+    left join public.app_users u on u.id = tm.user_id
+    where tm.tenant_id = ${tenantId}
+    order by tm.role = 'owner' desc, tm.user_email asc
+  `;
+  return camelizeAll(rows);
+}
+
+export async function saveStaff(req: Request, args: {
+  email: string; name?: string; role: 'owner' | 'staff'; permissions?: string[]; password?: string; username?: string;
+}) {
+  const access = await requireTenantOwner(req);
+  const tenantId = resolveTenantId(access);
+  const t = now();
+
+  // If password/username is provided, we use the virtual email logic
+  const isInternal = !!args.username && !!args.password;
+  const email = isInternal
+    ? `${args.username!.toLowerCase()}@${access.tenantSlug}.staff.shoply`
+    : args.email.toLowerCase().trim();
+
+  const existing = await sql`
+    select id from public.tenant_members
+    where tenant_id = ${tenantId} and lower(user_email) = ${email}
+    limit 1
+  `;
+
+  if (isInternal && args.password) {
+    const admin = getAdminClient();
+    const { data: user, error } = await admin.auth.admin.createUser({
+      email,
+      password: args.password,
+      email_confirm: true,
+      user_metadata: { name: args.name, is_staff: true, tenant_id: tenantId }
+    });
+    if (error) throw BAD_REQUEST(error.message);
+
+    if (existing[0]) {
+      await sql`
+        update public.tenant_members
+        set user_id = ${user.user.id}, user_name = ${args.name ?? null}, role = ${args.role},
+            permissions = ${args.permissions ?? null}, username = ${args.username}
+        where id = ${existing[0].id}
+      `;
+    } else {
+      await sql`
+        insert into public.tenant_members (tenant_id, user_id, user_email, user_name, role, permissions, invited_at, joined_at, username)
+        values (${tenantId}, ${user.user.id}, ${email}, ${args.name ?? null}, ${args.role}, ${args.permissions ?? null}, ${t}, ${t}, ${args.username})
+      `;
+    }
+  } else {
+    // Normal invite flow
+    if (existing[0]) {
+      await sql`
+        update public.tenant_members
+        set user_name = ${args.name ?? null}, role = ${args.role}, permissions = ${args.permissions ?? null}
+        where id = ${existing[0].id}
+      `;
+    } else {
+      await sql`
+        insert into public.tenant_members (tenant_id, user_email, user_name, role, permissions, invited_at)
+        values (${tenantId}, ${email}, ${args.name ?? null}, ${args.role}, ${args.permissions ?? null}, ${t})
+      `;
+    }
+  }
+
+  return { ok: true };
+}
+
+export async function deleteStaff(req: Request, memberId: string) {
+  const access = await requireTenantOwner(req);
+  const tenantId = resolveTenantId(access);
+
+  const member = await sql`select * from public.tenant_members where id = ${memberId} and tenant_id = ${tenantId} limit 1`;
+  if (!member[0]) throw BAD_REQUEST("Member not found");
+  if (member[0].role === 'owner') throw BAD_REQUEST("Cannot delete an owner");
+
+  await sql`delete from public.tenant_members where id = ${memberId}`;
+
+  // If it was an internal user, we might want to delete from auth.users too
+  if (member[0].username && member[0].user_id) {
+    const admin = getAdminClient();
+    await admin.auth.admin.deleteUser(member[0].user_id);
+  }
+
   return { ok: true };
 }
 

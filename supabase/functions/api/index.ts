@@ -148,6 +148,10 @@ app.delete("/store/coupons/:id", async (c) => c.json(await store.deleteCoupon(c.
 app.get("/store/customers", async (c) => c.json(await store.listCustomers(c.req.raw, { search: c.req.query("search") ?? undefined })));
 app.get("/store/customers/:id", async (c) => c.json(await store.getCustomer(c.req.raw, c.req.param("id"))));
 
+app.get("/store/staff", async (c) => c.json(await authed.listStaff(c.req.raw)));
+app.post("/store/staff", async (c) => c.json(await authed.saveStaff(c.req.raw, await c.req.json())));
+app.delete("/store/staff/:id", async (c) => c.json(await authed.deleteStaff(c.req.raw, c.req.param("id"))));
+
 // ---------------------------------------------------------------------------
 // Orders & payments
 // ---------------------------------------------------------------------------

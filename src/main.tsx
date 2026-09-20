@@ -12,6 +12,8 @@ const Landing = lazy(() => import("./pages/Landing.tsx"));
 const AuthPage = lazy(() => import("./pages/Auth.tsx"));
 const Start = lazy(() => import("./pages/Start.tsx"));
 const SuperAdmin = lazy(() => import("./pages/superadmin/SuperAdmin.tsx"));
+const SuperAuth = lazy(() => import("./pages/superadmin/SuperAuth.tsx"));
+const StaffAuth = lazy(() => import("./pages/admin/StaffAuth.tsx"));
 const StoreAdmin = lazy(() => import("./pages/admin/StoreAdmin.tsx"));
 const AdminProducts = lazy(() => import("./pages/admin/Products.tsx"));
 const AdminCategories = lazy(() => import("./pages/admin/Categories.tsx"));
@@ -22,6 +24,7 @@ const AdminCoupons = lazy(() => import("./pages/admin/Coupons.tsx"));
 const AdminTheme = lazy(() => import("./pages/admin/ThemeEditor.tsx"));
 const AdminPages = lazy(() => import("./pages/admin/PageBuilder.tsx"));
 const AdminSettings = lazy(() => import("./pages/admin/StoreSettings.tsx"));
+const AdminStaff = lazy(() => import("./pages/admin/StaffManagement.tsx"));
 const Storefront = lazy(() => import("./pages/storefront/Storefront.tsx"));
 const StoreHome = lazy(() => import("./pages/storefront/Home.tsx"));
 const StoreCatalog = lazy(() => import("./pages/storefront/Catalog.tsx"));
@@ -135,6 +138,7 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/start" element={<Start />} />
 
             {/* Super Admin */}
+            <Route path="/admin-portal-x9z" element={<SuperAuth />} />
             <Route
               path="/admin"
               element={
@@ -156,6 +160,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="theme" element={<AdminTheme />} />
               <Route path="pages" element={<AdminPages />} />
               <Route path="settings" element={<AdminSettings />} />
+              <Route path="staff" element={<AdminStaff />} />
             </Route>
 
             {/* Storefront */}
@@ -167,6 +172,9 @@ createRoot(document.getElementById("root")!).render(
               <Route path="checkout" element={<StoreCheckout />} />
               <Route path="order-success" element={<OrderSuccess />} />
             </Route>
+
+            {/* Staff login */}
+            <Route path="/t/:slug/staff" element={<StaffAuth />} />
 
             {/* Hosted payment page */}
             <Route path="/pay/:token" element={<PayPage />} />

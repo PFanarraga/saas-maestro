@@ -9,22 +9,32 @@ import { useNavigate, useSearchParams } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
 
 function AuthContent({ redirectAfterAuth = "/start" }: { redirectAfterAuth?: string }) {
-  const { isLoading: authLoading, isAuthenticated, signIn, verifyOtp, signInAnonymous, isConfigured } = useAuth();
+  const { isLoading: authLoading, isAuthenticated, signIn, signUp, signInWithPassword, verifyOtp, signInAnonymous, isConfigured, user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const returnTo = searchParams.get("returnTo") || redirectAfterAuth;
+  const isOwnerMode = searchParams.get("mode") === "owner";
 
-  const [step, setStep] = useState<"email" | "otp">("email");
+  const [step, setStep] = useState<"email" | "otp" | "password" | "signup">("email");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [tos, setTos] = useState(false);
+  const [marketing, setMarketing] = useState(true);
   const [otp, setOtp] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
-    if (!authLoading && isAuthenticated) {
+    if (!authLoading && isAuthenticated && user?.isVerified) {
       navigate(returnTo);
     }
-  }, [authLoading, isAuthenticated, navigate, returnTo]);
+  }, [authLoading, isAuthenticated, navigate, returnTo, user]);
+
+  useEffect(() => {
+    if (isOwnerMode) setStep("password");
+    else setStep("email");
+  }, [isOwnerMode]);
 
   const apiUrl = import.meta.env.VITE_API_URL || "";
   const isUrlValid = apiUrl.endsWith("/functions/v1/api");
@@ -69,53 +79,138 @@ function AuthContent({ redirectAfterAuth = "/start" }: { redirectAfterAuth?: str
     );
   }
 
-  const handleEmailSubmit = async (e: React.FormEvent) => {
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) return;
     setStatus("loading");
     setErrorMsg("");
     try {
-      const { error } = await signIn({ email });
+      const { error } = await signInWithPassword({ email, password });
+      if (error) {
+        if (error.message.includes("Invalid login credentials")) {
+          // If login fails, try to see if user exists, if not, maybe it's a signup intent
+          throw new Error("Credenciales inválidas. ¿Aún no tienes cuenta?");
+        }
+        throw error;
+      }
+      // If user is not verified, they need OTP
+    } catch (err: any) {
+      setStatus("error");
+      setErrorMsg(err.message);
+    }
+  };
+
+  const handleSignupSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tos) { toast.error("Debes aceptar los términos y condiciones"); return; }
+    setStatus("loading");
+    setErrorMsg("");
+    try {
+      const { error } = await signUp({ email, password, name, tosAccepted: tos, marketingAccepted: marketing });
       if (error) throw error;
       setStep("otp");
       setStatus("idle");
     } catch (err: any) {
-      console.error(err);
       setStatus("error");
-      setErrorMsg(err.message || "No pudimos enviar el código. Verifica tu conexión.");
+      setErrorMsg(err.message);
     }
   };
 
-  const handleOtpSubmit = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    if (otp.length !== 6) return;
-    setStatus("loading");
-    setErrorMsg("");
-    try {
-      const { error } = await verifyOtp({ email, token: otp });
-      if (error) throw error;
-      setStatus("success");
-      // Navigation is handled by useEffect
-    } catch (err: any) {
-      console.error(err);
-      setStatus("error");
-      setErrorMsg("El código es incorrecto o ha expirado.");
-      setOtp("");
+  const renderForm = () => {
+    if (step === "email") {
+      return (
+        <form onSubmit={handleEmailSubmit}>
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-xl text-center">Bienvenido</CardTitle>
+            <CardDescription className="text-center">Ingresa tu correo para recibir un código de acceso.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="relative">
+              <Mail className="absolute left-3 top-3 size-4 text-slate-400" />
+              <Input type="email" placeholder="nombre@ejemplo.com" className="pl-10" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            </div>
+            {status === "error" && <p className="text-xs text-red-600 bg-red-50 p-2 rounded">{errorMsg}</p>}
+          </CardContent>
+          <CardFooter className="flex flex-col gap-3">
+            <Button className="w-full" disabled={status === "loading"}>
+              {status === "loading" ? <Loader2 className="size-4 animate-spin" /> : "Enviar código"}
+            </Button>
+            <div className="relative w-full"><div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div><div className="relative flex justify-center text-[10px] uppercase font-bold text-slate-400"><span className="bg-white px-2">O</span></div></div>
+            <Button type="button" variant="outline" className="w-full" onClick={handleGuest} disabled={status === "loading"}>Entrar como invitado</Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => { setStep("password"); navigate("?mode=owner"); }}>Soy dueño de tienda (Contraseña)</Button>
+          </CardFooter>
+        </form>
+      );
     }
-  };
 
-  const handleGuest = async () => {
-    setStatus("loading");
-    setErrorMsg("");
-    try {
-      const { error } = await signInAnonymous();
-      if (error) throw error;
-      setStatus("success");
-    } catch (err: any) {
-      console.error(err);
-      setStatus("error");
-      setErrorMsg(err.message || "Error al entrar como invitado.");
+    if (step === "password") {
+      return (
+        <form onSubmit={handlePasswordSubmit}>
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-xl text-center">Acceso Dueño</CardTitle>
+            <CardDescription className="text-center">Ingresa con tu correo y contraseña.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <Input type="password" placeholder="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            {status === "error" && <p className="text-xs text-red-600 bg-red-50 p-2 rounded">{errorMsg}</p>}
+          </CardContent>
+          <CardFooter className="flex flex-col gap-3">
+            <Button className="w-full" disabled={status === "loading"}>Continuar</Button>
+            <Button type="button" variant="link" size="sm" onClick={() => setStep("signup")}>¿No tienes cuenta? Regístrate</Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => { setStep("email"); navigate("/auth"); }}>Volver a modo cliente</Button>
+          </CardFooter>
+        </form>
+      );
     }
+
+    if (step === "signup") {
+      return (
+        <form onSubmit={handleSignupSubmit}>
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-xl text-center">Crear Cuenta</CardTitle>
+            <CardDescription className="text-center">Únete a Shoply y lanza tu tienda.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Input placeholder="Nombre" value={name} onChange={(e) => setName(e.target.value)} required />
+            <Input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <Input type="password" placeholder="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <div className="space-y-2 pt-2">
+              <div className="flex items-start gap-2">
+                <input type="checkbox" id="tos" checked={tos} onChange={(e) => setTos(e.target.checked)} className="mt-1" />
+                <label htmlFor="tos" className="text-xs text-slate-600">He leído y acepto los términos de servicio y políticas de privacidad de Shoply.</label>
+              </div>
+              <div className="flex items-start gap-2">
+                <input type="checkbox" id="mkt" checked={marketing} onChange={(e) => setMarketing(e.target.checked)} className="mt-1" />
+                <label htmlFor="mkt" className="text-xs text-slate-600">Acepto recibir correos con actualizaciones y publicidad de la plataforma.</label>
+              </div>
+            </div>
+            {status === "error" && <p className="text-xs text-red-600 bg-red-50 p-2 rounded">{errorMsg}</p>}
+          </CardContent>
+          <CardFooter className="flex flex-col gap-3">
+            <Button className="w-full" disabled={status === "loading"}>Crear mi tienda</Button>
+            <Button type="button" variant="link" size="sm" onClick={() => setStep("password")}>¿Ya tienes cuenta? Ingresa</Button>
+          </CardFooter>
+        </form>
+      );
+    }
+
+    return (
+      <form onSubmit={handleOtpSubmit}>
+        <CardHeader className="space-y-1">
+          <div className="flex items-center justify-between"><CardTitle className="text-xl">Verifica tu correo</CardTitle></div>
+          <CardDescription>Escribe el código enviado a <span className="text-slate-950">{email}</span>.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6 flex flex-col items-center">
+          <InputOTP value={otp} onChange={setOtp} maxLength={6} onComplete={() => handleOtpSubmit()}>
+            <InputOTPGroup className="gap-2">
+              {Array.from({ length: 6 }).map((_, i) => <InputOTPSlot key={i} index={i} className="size-12 border-slate-300 rounded-md" />)}
+            </InputOTPGroup>
+          </InputOTP>
+          {status === "error" && <p className="text-xs text-red-600">{errorMsg}</p>}
+        </CardContent>
+        <CardFooter><Button className="w-full" disabled={status === "loading" || otp.length !== 6}>Verificar código</Button></CardFooter>
+      </form>
+    );
   };
 
   return (
@@ -137,130 +232,15 @@ function AuthContent({ redirectAfterAuth = "/start" }: { redirectAfterAuth?: str
 
         <Card className="border-slate-200/60 shadow-2xl shadow-slate-200/50 overflow-hidden">
           <AnimatePresence mode="wait">
-            {step === "email" ? (
-              <motion.div
-                key="email-step"
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 10 }}
-                transition={{ duration: 0.2 }}
-              >
-                <CardHeader className="space-y-1">
-                  <CardTitle className="text-xl">Iniciar Sesión</CardTitle>
-                  <CardDescription>
-                    Ingresa tu correo para recibir un código de acceso.
-                  </CardDescription>
-                </CardHeader>
-                <form onSubmit={handleEmailSubmit}>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                      <div className="relative">
-                        <Mail className="absolute left-3 top-3 size-4 text-slate-400" />
-                        <Input
-                          type="email"
-                          placeholder="nombre@ejemplo.com"
-                          className="pl-10 h-11"
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          disabled={status === "loading"}
-                          required
-                        />
-                      </div>
-                    </div>
-                    {status === "error" && (
-                      <div className="flex items-center gap-2 text-red-600 bg-red-50 p-3 rounded-lg text-xs font-medium border border-red-100">
-                        <AlertCircle className="size-4 shrink-0" />
-                        {errorMsg}
-                      </div>
-                    )}
-                  </CardContent>
-                  <CardFooter className="flex flex-col gap-4">
-                    <Button className="w-full h-11 text-sm font-semibold group" disabled={status === "loading"}>
-                      {status === "loading" ? <Loader2 className="size-4 animate-spin" /> : (
-                        <>Continuar <ArrowRight className="ml-2 size-4 group-hover:translate-x-1 transition-transform" /></>
-                      )}
-                    </Button>
-
-                    <div className="relative w-full">
-                      <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-slate-100" /></div>
-                      <div className="relative flex justify-center text-[10px] uppercase font-bold tracking-widest text-slate-400"><span className="bg-white px-3">O también</span></div>
-                    </div>
-
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full h-11 text-slate-600 hover:bg-slate-50 transition-colors"
-                      onClick={handleGuest}
-                      disabled={status === "loading"}
-                    >
-                      <UserX className="mr-2 size-4 opacity-70" />
-                      Entrar como invitado
-                    </Button>
-                  </CardFooter>
-                </form>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="otp-step"
-                initial={{ opacity: 0, x: 10 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -10 }}
-                transition={{ duration: 0.2 }}
-              >
-                <CardHeader className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-xl">Verifica tu correo</CardTitle>
-                    <button className="text-xs text-primary font-medium hover:underline" onClick={() => setStep("email")}>Cambiar email</button>
-                  </div>
-                  <CardDescription>
-                    Escribe el código de 6 dígitos que enviamos a <span className="text-slate-900 font-medium">{email}</span>.
-                  </CardDescription>
-                </CardHeader>
-                <form onSubmit={handleOtpSubmit}>
-                  <CardContent className="space-y-6 flex flex-col items-center py-6">
-                    <InputOTP
-                      value={otp}
-                      onChange={setOtp}
-                      maxLength={6}
-                      onComplete={() => handleOtpSubmit()}
-                      disabled={status === "loading" || status === "success"}
-                    >
-                      <InputOTPGroup className="gap-2">
-                        {Array.from({ length: 6 }).map((_, i) => (
-                          <InputOTPSlot
-                            key={i}
-                            index={i}
-                            className="h-12 w-10 sm:w-12 text-lg border-slate-300 rounded-md focus:ring-primary shadow-sm"
-                          />
-                        ))}
-                      </InputOTPGroup>
-                    </InputOTP>
-
-                    {status === "error" && (
-                      <div className="w-full flex items-center gap-2 text-red-600 bg-red-50 p-3 rounded-lg text-xs font-medium border border-red-100">
-                        <AlertCircle className="size-4 shrink-0" />
-                        {errorMsg}
-                      </div>
-                    )}
-
-                    {status === "success" && (
-                      <div className="w-full flex items-center gap-2 text-emerald-600 bg-emerald-50 p-3 rounded-lg text-xs font-medium border border-emerald-100">
-                        <CheckCircle2 className="size-4 shrink-0" />
-                        ¡Código verificado! Entrando...
-                      </div>
-                    )}
-                  </CardContent>
-                  <CardFooter>
-                    <Button
-                      className="w-full h-11 font-semibold"
-                      disabled={status === "loading" || status === "success" || otp.length !== 6}
-                    >
-                      {status === "loading" ? <Loader2 className="size-4 animate-spin" /> : "Verificar código"}
-                    </Button>
-                  </CardFooter>
-                </form>
-              </motion.div>
-            )}
+            <motion.div
+              key={step}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+            >
+              {renderForm()}
+            </motion.div>
           </AnimatePresence>
         </Card>
 

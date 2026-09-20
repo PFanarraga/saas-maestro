@@ -64,6 +64,23 @@ export function useAuth() {
     });
   };
 
+  const signUp = async ({ email, password, name, tosAccepted, marketingAccepted }: any) => {
+    if (!isSupabaseConfigured) throw new Error("Supabase no está configurado");
+    return await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { name, tos_accepted: tosAccepted, marketing_accepted: marketingAccepted },
+        emailRedirectTo: window.location.origin + "/start"
+      }
+    });
+  };
+
+  const signInWithPassword = async ({ email, password }: any) => {
+    if (!isSupabaseConfigured) throw new Error("Supabase no está configurado");
+    return await supabase.auth.signInWithPassword({ email, password });
+  };
+
   const verifyOtp = async ({ email, token }: { email: string; token: string }) => {
     if (!isSupabaseConfigured) throw new Error("Supabase no está configurado");
     return await supabase.auth.verifyOtp({ email, token, type: 'email' });
@@ -87,6 +104,8 @@ export function useAuth() {
     user,
     session,
     signIn,
+    signUp,
+    signInWithPassword,
     verifyOtp,
     signInAnonymous,
     signOut,

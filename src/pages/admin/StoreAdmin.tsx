@@ -19,6 +19,7 @@ const NAV = [
   { to: "/store/coupons", label: "Cupones", icon: TicketPercent },
   { to: "/store/theme", label: "Apariencia", icon: Palette },
   { to: "/store/pages", label: "Páginas", icon: LayoutTemplate },
+  { to: "/store/staff", label: "Equipo", icon: Users },
   { to: "/store/settings", label: "Configuración", icon: Settings },
 ];
 
