@@ -6,6 +6,8 @@ import { DEFAULT_HOMEPAGE_BLOCKS, DEFAULT_THEMES, PLAN_PRESETS } from "./constan
 // ---------------------------------------------------------------------------
 // Bootstrap: the FIRST user to sign in becomes the platform Super Admin.
 // ---------------------------------------------------------------------------
+const SUPERUSER_EMAIL = "pedrofanarraga@gmail.com";
+
 export async function bootstrap(req: Request, args: { name?: string }) {
   const access = await requireUser(req);
   if (access.user.is_anonymous) throw BAD_REQUEST("Anonymous users cannot bootstrap the platform");
@@ -34,22 +36,30 @@ export async function bootstrap(req: Request, args: { name?: string }) {
     }
   }
 
-  if (!access.user.platform_role) {
-    const anySuper = await sql`select 1 from public.app_users where platform_role = 'super_admin' limit 1`;
-    if (!anySuper[0]) {
+  // Authorize Super Admin based on exact email.
+  if (access.user.email?.toLowerCase() === SUPERUSER_EMAIL.toLowerCase()) {
+    if (!access.user.platform_role) {
       const name = args.name ?? access.user.name ?? access.user.email ?? "Super Admin";
       await sql`update public.app_users set platform_role = 'super_admin', role = 'admin', name = ${name} where id = ${access.userId}`;
       await audit({
         actorId: access.userId,
         actorLabel: access.user.email ?? access.userId,
-        action: "ADMIN_LOGIN",
+        action: "ADMIN_BOOTSTRAP",
         resource: "platform",
         newData: { bootstrap: true },
       });
       const refreshed = await sql`select * from public.app_users where id = ${access.userId} limit 1`;
       return { user: shapeUser(refreshed[0]) };
     }
+  } else {
+    // If not the authorized email, ensure they ARE NOT super admin (self-healing if logic changed)
+    if (access.user.platform_role === 'super_admin') {
+      await sql`update public.app_users set platform_role = null where id = ${access.userId}`;
+      const refreshed = await sql`select * from public.app_users where id = ${access.userId} limit 1`;
+      return { user: shapeUser(refreshed[0]) };
+    }
   }
+
   return { user: shapeUser(access.user) };
 }
 
