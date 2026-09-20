@@ -10,7 +10,10 @@ const Landing = lazy(() => import("./pages/Landing.tsx"));
 const AuthPage = lazy(() => import("./pages/Auth.tsx"));
 const RegisterWizard = lazy(() => import("./pages/RegisterWizard.tsx"));
 const Start = lazy(() => import("./pages/Start.tsx"));
-const SuperAdmin = lazy(() => import("./pages/superadmin/SuperAdmin.tsx"));
+const SuperAdminLayout = lazy(() => import("./pages/superadmin/SuperAdminLayout.tsx"));
+const PlatformDashboard = lazy(() => import("./pages/superadmin/PlatformDashboard.tsx"));
+const TenantsList = lazy(() => import("./pages/superadmin/TenantsList.tsx"));
+const AuditLogs = lazy(() => import("./pages/superadmin/AuditLogs.tsx"));
 const SuperAuth = lazy(() => import("./pages/superadmin/SuperAuth.tsx"));
 const StaffAuth = lazy(() => import("./pages/admin/StaffAuth.tsx"));
 const StoreAdmin = lazy(() => import("./pages/admin/StoreAdmin.tsx"));
@@ -119,14 +122,12 @@ createRoot(document.getElementById("root")!).render(
 
             {/* Super Admin */}
             <Route path="/admin-portal-x9z" element={<SuperAuth />} />
-            <Route
-              path="/admin"
-              element={
-                <RequireAuth>
-                  <SuperAdmin />
-                </RequireAuth>
-              }
-            />
+            <Route path="/admin" element={<RequireAuth><SuperAdminLayout /></RequireAuth>}>
+              <Route index element={<PlatformDashboard />} />
+              <Route path="tenants" element={<TenantsList />} />
+              <Route path="audit" element={<AuditLogs />} />
+              <Route path="*" element={<div className="p-8 text-muted-foreground italic">Módulo en construcción...</div>} />
+            </Route>
 
             {/* Store Admin */}
             <Route path="/store" element={<RequireAuth><StoreAdmin /></RequireAuth>}>

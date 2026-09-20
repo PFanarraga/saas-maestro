@@ -172,21 +172,77 @@ export async function claimMembership(req: Request) {
 // ---------------------------------------------------------------------------
 export async function globalStats(req: Request) {
   await requireSuperAdmin(req);
-  const tenants = await sql`select status, count(*)::int as n from public.tenants group by status`;
+  const thirtyDaysAgo = now() - (30 * 86400000);
+  const fourteenDaysAgo = now() - (14 * 86400000);
+
+  const tenants = await sql`select status, plan_code, count(*)::int as n from public.tenants group by status, plan_code`;
   const orders = await sql`select status, count(*)::int as n, coalesce(sum(total), 0) as total from public.orders group by status`;
   const users = await sql`select count(*)::int as n from public.app_users`;
-  const tenantMap = Object.fromEntries(tenants.map((t: any) => [t.status, t.n]));
+
+  const recentTenantsCount = await sql`select count(*)::int as n from public.tenants where created_at > ${thirtyDaysAgo}`;
+  const recentOrdersAgg = await sql`select count(*)::int as n, sum(total) as total from public.orders where created_at > ${thirtyDaysAgo} and status in ('paid','processing','ready','shipped','delivered')`;
+
+  // Plan distribution
+  const planMap: Record<string, number> = {};
+  tenants.forEach((t: any) => {
+    planMap[t.plan_code] = (planMap[t.plan_code] || 0) + t.n;
+  });
+
+  const tenantStatusMap: Record<string, number> = {};
+  tenants.forEach((t: any) => {
+    tenantStatusMap[t.status] = (tenantStatusMap[t.status] || 0) + t.n;
+  });
+
   const revenue = orders
     .filter((o: any) => ["paid", "processing", "ready", "shipped", "delivered"].includes(o.status))
     .reduce((s: number, o: any) => s + Number(o.total), 0);
   const orderCount = orders.reduce((s: number, o: any) => s + o.n, 0);
+
+  // Series for charts (last 14 days)
+  const series = await sql`
+    select
+      date_trunc('day', to_timestamp(created_at / 1000)) as day,
+      count(*)::int as orders,
+      sum(total) as revenue
+    from public.orders
+    where created_at > ${fourteenDaysAgo} and status in ('paid','processing','ready','shipped','delivered')
+    group by day
+    order by day asc
+  `;
+
+  // Recent activity
+  const topTenants = await sql`
+    select id, name, slug, plan_code, status, created_at from public.tenants order by created_at desc limit 5
+  `;
+  const topOrders = await sql`
+    select o.id, o.number, o.total, o.currency, o.status, o.created_at, t.name as tenant_name
+    from public.orders o
+    left join public.tenants t on t.id = o.tenant_id
+    order by o.created_at desc limit 5
+  `;
+
   return {
-    tenants: Object.values(tenantMap).reduce((s: number, n: any) => s + n, 0),
-    activeTenants: tenantMap["active"] ?? 0,
-    suspendedTenants: tenantMap["suspended"] ?? 0,
+    tenants: Object.values(tenantStatusMap).reduce((s: number, n: any) => s + n, 0),
+    activeTenants: tenantStatusMap["active"] ?? 0,
+    suspendedTenants: tenantStatusMap["suspended"] ?? 0,
     orders: orderCount,
     revenue,
     users: users[0]?.n ?? 0,
+    planDistribution: planMap,
+    chartSeries: series.map((s: any) => ({
+      day: s.day.toISOString().split('T')[0],
+      orders: s.orders,
+      revenue: Number(s.revenue ?? 0)
+    })),
+    recent: {
+      tenants: camelizeAll(topTenants),
+      orders: camelizeAll(topOrders)
+    },
+    growth: {
+      newTenants30d: recentTenantsCount[0].n,
+      newOrders30d: recentOrdersAgg[0].n,
+      revenue30d: Number(recentOrdersAgg[0].total ?? 0)
+    }
   };
 }
 
