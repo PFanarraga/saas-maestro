@@ -20,6 +20,14 @@ export default function BuyerAuth() {
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [busy, setBusy] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [resendCooldown]);
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,13 +109,28 @@ export default function BuyerAuth() {
                       ))}
                     </InputOTPGroup>
                   </InputOTP>
+
+                  <div className="mt-4 text-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (resendCooldown === 0) {
+                          handleEmailSubmit(new Event('submit') as any);
+                          setResendCooldown(60);
+                        }
+                      }}
+                      disabled={resendCooldown > 0}
+                      className={`text-xs font-medium transition-colors ${resendCooldown > 0 ? "text-slate-400 cursor-not-allowed" : "text-primary hover:underline"}`}
+                    >
+                      {resendCooldown > 0 ? `Reenviar código en ${resendCooldown}s` : "Reenviar código de verificación"}
+                    </button>
+                  </div>
                 </CardContent>
-                <CardFooter className="flex flex-col gap-3">
+                <CardFooter className="flex flex-col gap-3 pt-0">
                   <Button className="w-full h-11" disabled={busy || otp.length !== 6}>
                     {busy ? <Loader2 className="animate-spin size-4" /> : "Verificar e Ingresar"}
                   </Button>
                   <div className="flex justify-center gap-4 text-xs">
-                    <button type="button" className="text-primary font-medium hover:underline" onClick={handleEmailSubmit}>Reenviar código</button>
                     <button type="button" className="text-slate-400 font-medium hover:underline" onClick={() => setStep("email")}>Cambiar correo</button>
                   </div>
                 </CardFooter>

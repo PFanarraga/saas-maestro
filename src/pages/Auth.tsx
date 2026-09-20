@@ -9,7 +9,7 @@ import { useNavigate, useSearchParams } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
 
 function AuthContent({ redirectAfterAuth = "/start" }: { redirectAfterAuth?: string }) {
-  const { isLoading: authLoading, isAuthenticated, signInWithPassword, verifyOtp, isConfigured, user, signOut } = useAuth();
+  const { isLoading: authLoading, isAuthenticated, signInWithPassword, signIn, verifyOtp, isConfigured, user, signOut } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const returnTo = searchParams.get("returnTo") || redirectAfterAuth;
@@ -20,6 +20,14 @@ function AuthContent({ redirectAfterAuth = "/start" }: { redirectAfterAuth?: str
   const [otp, setOtp] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [resendCooldown]);
 
   useEffect(() => {
     if (!authLoading && isAuthenticated && user) {
@@ -91,6 +99,20 @@ function AuthContent({ redirectAfterAuth = "/start" }: { redirectAfterAuth?: str
     }
   };
 
+  const handleResend = async () => {
+    if (resendCooldown > 0) return;
+    const targetEmail = user?.email || email;
+    if (!targetEmail) return;
+
+    try {
+      const { error } = await signIn({ email: targetEmail });
+      if (error) throw error;
+      setResendCooldown(60);
+    } catch (err: any) {
+      toast.error("Error al reenviar el código");
+    }
+  };
+
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setStatus("loading");
@@ -144,7 +166,19 @@ function AuthContent({ redirectAfterAuth = "/start" }: { redirectAfterAuth?: str
               {Array.from({ length: 6 }).map((_, i) => <InputOTPSlot key={i} index={i} className="size-12 border-slate-300 rounded-md text-lg" />)}
             </InputOTPGroup>
           </InputOTP>
-          {status === "error" && <p className="text-xs text-red-600 font-medium bg-red-50 p-2 rounded w-full text-center">{errorMsg}</p>}
+
+          <div className="text-center space-y-2 w-full">
+            {status === "error" && <p className="text-xs text-red-600 font-medium bg-red-50 p-2 rounded">{errorMsg}</p>}
+
+            <button
+              type="button"
+              onClick={handleResend}
+              disabled={resendCooldown > 0}
+              className={`text-xs font-medium transition-colors ${resendCooldown > 0 ? "text-slate-400 cursor-not-allowed" : "text-primary hover:underline"}`}
+            >
+              {resendCooldown > 0 ? `Reenviar código en ${resendCooldown}s` : "Reenviar código de verificación"}
+            </button>
+          </div>
         </CardContent>
         <CardFooter className="flex flex-col gap-3">
           <Button className="w-full h-11" disabled={status === "loading" || otp.length !== 6}>
