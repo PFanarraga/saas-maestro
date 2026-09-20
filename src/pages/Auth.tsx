@@ -7,6 +7,7 @@ import { Loader2, ShieldAlert } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "sonner";
 
 function AuthContent({ redirectAfterAuth = "/start" }: { redirectAfterAuth?: string }) {
   const { isLoading: authLoading, isAuthenticated, signInWithPassword, signIn, verifyOtp, isConfigured, user, signOut } = useAuth();
