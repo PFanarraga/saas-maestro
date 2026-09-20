@@ -96,7 +96,7 @@ export async function requireUser(req: Request): Promise<AccessContext> {
 
 export async function requireSuperAdmin(req: Request): Promise<AccessContext> {
   const access = await requireUser(req);
-  if (!access.isSuperAdmin) throw FORBIDDEN("super admin required");
+  if (!access.isSuperAdmin) throw FORBIDDEN("Acceso denegado: se requiere rol de Super Administrador");
   return access;
 }
 
@@ -104,10 +104,29 @@ export async function requireSuperAdmin(req: Request): Promise<AccessContext> {
 export async function requireTenantMember(req: Request, tenantId?: string): Promise<AccessContext> {
   const access = await requireUser(req);
   if (access.isSuperAdmin) return access;
-  if (!access.membership) throw FORBIDDEN("no tenant membership");
+  if (!access.membership) throw FORBIDDEN("Acceso denegado: no eres miembro de esta tienda");
   if (tenantId && access.membership.tenant_id !== tenantId) {
-    throw FORBIDDEN("tenant isolation violation");
+    throw FORBIDDEN("Acceso denegado: aislamiento de tienda violado");
   }
+  return access;
+}
+
+/** Specific staff permission guard. Owners always have all permissions. */
+export async function requirePermission(req: Request, permission: string, tenantId?: string): Promise<AccessContext> {
+  const access = await requireTenantMember(req, tenantId);
+  if (access.isSuperAdmin || access.tenantRole === "owner") return access;
+
+  const permissions = (access.membership?.permissions as string[]) ?? [];
+  if (!permissions.includes(permission)) {
+    throw FORBIDDEN(`Acceso denegado: falta el permiso '${permission}'`);
+  }
+  return access;
+}
+
+export async function requireTenantOwner(req: Request, tenantId?: string): Promise<AccessContext> {
+  const access = await requireTenantMember(req, tenantId);
+  if (access.isSuperAdmin) return access;
+  if (access.tenantRole !== "owner") throw FORBIDDEN("Acceso denegado: se requiere rol de Propietario");
   return access;
 }
 

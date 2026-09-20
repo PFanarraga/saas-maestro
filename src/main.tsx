@@ -8,6 +8,7 @@ import "./index.css";
 // Lazy load route components for better code splitting
 const Landing = lazy(() => import("./pages/Landing.tsx"));
 const AuthPage = lazy(() => import("./pages/Auth.tsx"));
+const RegisterWizard = lazy(() => import("./pages/RegisterWizard.tsx"));
 const Start = lazy(() => import("./pages/Start.tsx"));
 const SuperAdmin = lazy(() => import("./pages/superadmin/SuperAdmin.tsx"));
 const SuperAuth = lazy(() => import("./pages/superadmin/SuperAuth.tsx"));
@@ -24,6 +25,7 @@ const AdminPages = lazy(() => import("./pages/admin/PageBuilder.tsx"));
 const AdminSettings = lazy(() => import("./pages/admin/StoreSettings.tsx"));
 const AdminStaff = lazy(() => import("./pages/admin/StaffManagement.tsx"));
 const Storefront = lazy(() => import("./pages/storefront/Storefront.tsx"));
+const BuyerAuth = lazy(() => import("./pages/storefront/BuyerAuth.tsx"));
 const StoreHome = lazy(() => import("./pages/storefront/Home.tsx"));
 const StoreCatalog = lazy(() => import("./pages/storefront/Catalog.tsx"));
 const StoreProduct = lazy(() => import("./pages/storefront/ProductPage.tsx"));
@@ -111,6 +113,8 @@ createRoot(document.getElementById("root")!).render(
         <Suspense fallback={<RouteLoading />}>
           <Routes>
             <Route path="/" element={<Landing />} />
+            <Route path="/login" element={<AuthPage redirectAfterAuth="/start" />} />
+            <Route path="/register" element={<RegisterWizard />} />
             <Route path="/auth" element={<AuthPage redirectAfterAuth="/start" />} />
             <Route path="/start" element={<Start />} />
 
@@ -148,6 +152,8 @@ createRoot(document.getElementById("root")!).render(
               <Route path="cart" element={<StoreCart />} />
               <Route path="checkout" element={<StoreCheckout />} />
               <Route path="order-success" element={<OrderSuccess />} />
+              <Route path="login" element={<BuyerAuth />} />
+              <Route path="account" element={<RequireAuth><div className="p-8">Mi Cuenta (Próximamente)</div></RequireAuth>} />
             </Route>
 
             {/* Staff login */}

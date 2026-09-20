@@ -30,8 +30,8 @@ export default function Landing() {
             <a href="#pricing" className="hover:text-foreground transition-colors">Precios</a>
           </nav>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" asChild><Link to="/auth">Ingresar</Link></Button>
-            <Button size="sm" asChild><Link to="/auth">Empezar gratis <ArrowRight className="size-4 ml-1" /></Link></Button>
+            <Button variant="ghost" size="sm" asChild><Link to="/login">Ingresar</Link></Button>
+            <Button size="sm" asChild><Link to="/register">Empezar gratis <ArrowRight className="size-4 ml-1" /></Link></Button>
           </div>
         </div>
       </header>
@@ -64,7 +64,7 @@ export default function Landing() {
             transition={{ duration: 0.5, delay: 0.2 }}
             className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3"
           >
-            <Button size="lg" asChild><Link to="/auth">Crear mi tienda <ArrowRight className="size-4 ml-1" /></Link></Button>
+            <Button size="lg" asChild><Link to="/register">Crear mi tienda <ArrowRight className="size-4 ml-1" /></Link></Button>
             <Button size="lg" variant="outline" asChild><a href="#demo">Ver tiendas demo</a></Button>
           </motion.div>
           <p className="mt-4 text-xs text-muted-foreground">Sin tarjeta de crédito · Checkout como invitado · WhatsApp integrado</p>
@@ -184,7 +184,7 @@ export default function Landing() {
                     ))}
                   </ul>
                   <Button className="mt-5 w-full" variant={p.highlight ? "default" : "outline"} asChild>
-                    <Link to="/auth">Elegir plan</Link>
+                    <Link to="/register">Elegir plan</Link>
                   </Button>
                 </CardContent>
               </Card>
@@ -198,7 +198,7 @@ export default function Landing() {
         <div className="mx-auto max-w-3xl px-4 text-center">
           <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">¿Listo para lanzar tu tienda?</h2>
           <p className="mt-2 text-muted-foreground">Crea tu cuenta y ten tu tienda pública hoy mismo.</p>
-          <Button size="lg" className="mt-6" asChild><Link to="/auth">Empezar ahora <ArrowRight className="size-4 ml-1" /></Link></Button>
+          <Button size="lg" className="mt-6" asChild><Link to="/register">Empezar ahora <ArrowRight className="size-4 ml-1" /></Link></Button>
         </div>
       </section>
 

@@ -242,6 +242,7 @@ export async function getTenantDetail(req: Request, tenantId: string) {
 export async function createTenant(req: Request, args: {
   name: string; slug: string; template: string; planCode: string; adminEmail: string;
   adminName?: string; whatsappPhone?: string; currency?: string; isDemo?: boolean;
+  businessName?: string; category?: string; description?: string; country?: string; city?: string; address?: string; businessPhone?: string;
 }) {
   const access = await requireSuperAdmin(req);
   const slug = args.slug.toLowerCase().trim();
@@ -251,11 +252,13 @@ export async function createTenant(req: Request, args: {
   const t = now();
   const tenantRows = await sql`
     insert into public.tenants
-      (name, slug, status, template, plan_code, whatsapp_phone, currency, whatsapp_enabled, coupons_enabled, delivery_enabled, payment_provider, is_demo, created_at, seo)
+      (name, slug, status, template, plan_code, whatsapp_phone, currency, whatsapp_enabled, coupons_enabled, delivery_enabled, payment_provider, is_demo, created_at, seo,
+       business_name, category, description, country, city, address, business_phone)
     values
       (${args.name.trim().slice(0, 120)}, ${slug}, 'active', ${args.template}, ${args.planCode}, ${args.whatsappPhone ?? null},
        ${args.currency ?? "PEN"}, true, true, true, 'manual', ${args.isDemo ?? false}, ${t},
-       ${JSON.stringify({ title: `${args.name} — Tienda oficial`, description: `Compra en ${args.name} con delivery y pago por WhatsApp.` })}::jsonb)
+       ${JSON.stringify({ title: `${args.name} — Tienda oficial`, description: `Compra en ${args.name} con delivery y pago por WhatsApp.` })}::jsonb,
+       ${args.businessName ?? null}, ${args.category ?? null}, ${args.description ?? null}, ${args.country ?? null}, ${args.city ?? null}, ${args.address ?? null}, ${args.businessPhone ?? null})
     returning id
   `;
   const tenantId = tenantRows[0].id;
