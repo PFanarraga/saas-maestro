@@ -2,6 +2,7 @@ import { sql, now, camelize, camelizeAll, sanitizeText, BAD_REQUEST, type Row } 
 import { audit, getAccessContext, requireSuperAdmin, requireUser, type AccessContext, requireTenantMember, requireTenantOwner, resolveTenantId, requirePermission } from "./auth.ts";
 import { DEFAULT_HOMEPAGE_BLOCKS, DEFAULT_THEMES, PLAN_PRESETS } from "./constants.ts";
 import { getAdminClient } from "./db.ts";
+import { TemplateRegistry } from "./templates/registry.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -512,24 +513,26 @@ export async function createTenant(req: Request, args: {
   const tenantRows = await sql`
     insert into public.tenants
       (name, slug, status, template, plan_code, whatsapp_phone, currency, whatsapp_enabled, coupons_enabled, delivery_enabled, payment_provider, is_demo, created_at, seo,
-       business_name, category, description, country, city, address, business_phone)
+       business_name, category, description, country, city, address, business_phone, active_template_id)
     values
       (${args.name.trim().slice(0, 120)}, ${slug}, 'active', ${args.template}, ${args.planCode}, ${args.whatsappPhone ?? null},
        ${args.currency ?? "PEN"}, true, true, true, 'manual', ${args.isDemo ?? false}, ${t},
        ${JSON.stringify({ title: `${args.name} — Tienda oficial`, description: `Compra en ${args.name} con delivery y pago por WhatsApp.` })}::jsonb,
-       ${args.businessName ?? null}, ${args.category ?? null}, ${args.description ?? null}, ${args.country ?? null}, ${args.city ?? null}, ${args.address ?? null}, ${args.businessPhone ?? null})
+       ${args.businessName ?? null}, ${args.category ?? null}, ${args.description ?? null}, ${args.country ?? null}, ${args.city ?? null}, ${args.address ?? null}, ${args.businessPhone ?? null},
+       ${args.template})
     returning id
   `;
   const tenantId = tenantRows[0].id;
 
-  const templateKey = args.template in DEFAULT_THEMES ? args.template : "minimal";
-  const theme = { ...DEFAULT_THEMES[templateKey], brand: { ...DEFAULT_THEMES[templateKey].brand, name: args.name } };
+  const template = TemplateRegistry.getById(args.template);
+  const theme = { ...template.defaultTheme, brand: { ...template.defaultTheme.brand, name: args.name } };
+
   await sql`insert into public.tenant_themes (tenant_id, status, version, theme, updated_at, published_at)
     values (${tenantId}, 'published', 1, ${JSON.stringify(theme)}::jsonb, ${t}, ${t})`;
   await sql`insert into public.tenant_themes (tenant_id, status, version, theme, updated_at)
     values (${tenantId}, 'draft', 1, ${JSON.stringify(theme)}::jsonb, ${t})`;
 
-  const blocks = DEFAULT_HOMEPAGE_BLOCKS.map((b) => ({ ...b, settings: { ...b.settings } }));
+  const blocks = template.initialBlocks.map((b) => ({ ...b, id: `${b.type}-${Date.now()}-${Math.random().toString(36).slice(2, 5)}` }));
   await sql`insert into public.pages (tenant_id, slug, title, is_home, status, version, blocks, updated_at)
     values (${tenantId}, 'home', 'Inicio', true, 'published', 1, ${JSON.stringify(blocks)}::jsonb, ${t})`;
   await sql`insert into public.pages (tenant_id, slug, title, is_home, status, version, blocks, updated_at)

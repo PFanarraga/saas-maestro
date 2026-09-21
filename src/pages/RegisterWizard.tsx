@@ -9,15 +9,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
-import { CheckCircle2, Loader2, ArrowLeft, ArrowRight, Store, User, Building2, CreditCard } from "lucide-react";
+import { CheckCircle2, Loader2, ArrowLeft, ArrowRight, Store, User, Building2, CreditCard, Layout } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
+import { TemplateRegistry } from "@/lib/templates/registry";
+import { cn } from "@/lib/utils";
 
 const STEPS = [
   { id: "account", title: "Tu Cuenta", icon: User },
   { id: "business", title: "Tu Negocio", icon: Building2 },
-  { id: "store", title: "Tu Tienda", icon: Store },
-  { id: "plan", title: "Elige tu Plan", icon: CreditCard },
+  { id: "design", title: "Tu Diseño", icon: Layout },
+  { id: "plan", title: "Tu Plan", icon: CreditCard },
   { id: "success", title: "¡Listo!", icon: CheckCircle2 },
 ];
 
@@ -232,23 +234,38 @@ export default function RegisterWizard() {
               {currentStep === 2 && (
                 <>
                   <CardHeader>
-                    <CardTitle>Configura tu Tienda</CardTitle>
-                    <CardDescription>Define cómo se verá y su dirección en internet.</CardDescription>
+                    <CardTitle>Tu Diseño</CardTitle>
+                    <CardDescription>Elige un template oficial para comenzar.</CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-1.5"><Label>Nombre de la tienda</Label><Input value={formData.storeName} onChange={e => setForm({...formData, storeName: e.target.value})} /></div>
-                    <div className="space-y-1.5">
-                      <Label>Enlace deseado (URL)</Label>
-                      <div className="flex items-center gap-2">
-                        <Input value={formData.slug} onChange={e => handleSlugChange(e.target.value)} placeholder="mi-tienda" />
-                        <span className="text-slate-400 font-medium">.shoply.app</span>
+                  <CardContent className="space-y-6">
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5"><Label>Nombre de la tienda</Label><Input value={formData.storeName} onChange={e => setForm({...formData, storeName: e.target.value})} placeholder="Ej: Mi Tienda" /></div>
+                      <div className="space-y-1.5">
+                        <Label>Enlace deseado (URL)</Label>
+                        <div className="flex items-center gap-2">
+                          <Input value={formData.slug} onChange={e => handleSlugChange(e.target.value)} placeholder="mi-tienda" />
+                          <span className="text-slate-400 font-bold text-xs">.shoply.app</span>
+                        </div>
                       </div>
                     </div>
-                    <div className="space-y-1.5">
-                      <Label>Plantilla inicial</Label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {["minimal", "vibrant", "classic"].map(t => (
-                          <button key={t} onClick={() => setForm({...formData, template: t})} className={`p-3 border rounded-lg text-xs font-bold uppercase ${formData.template === t ? "border-primary bg-primary/5 text-primary" : "border-slate-200"}`}>{t}</button>
+
+                    <div className="space-y-3">
+                      <Label className="text-xs font-black uppercase tracking-widest text-slate-400">Elige un diseño base</Label>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {TemplateRegistry.getAll().map(t => (
+                          <button
+                            key={t.metadata.id}
+                            onClick={() => setForm({...formData, template: t.metadata.id})}
+                            className={cn(
+                              "flex flex-col items-center gap-2 p-2 rounded-xl border-2 transition-all",
+                              formData.template === t.metadata.id ? "border-primary bg-primary/5 ring-4 ring-primary/10" : "border-slate-100 hover:border-slate-200 bg-white"
+                            )}
+                          >
+                            <div className="aspect-square w-full rounded-lg overflow-hidden bg-slate-100">
+                               <img src={t.metadata.previewImageUrl} alt={t.metadata.name} className="w-full h-full object-cover" />
+                            </div>
+                            <span className="text-[10px] font-bold uppercase tracking-tight truncate w-full text-center">{t.metadata.slug}</span>
+                          </button>
                         ))}
                       </div>
                     </div>

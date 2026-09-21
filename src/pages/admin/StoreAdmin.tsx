@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Package, FolderTree, ShoppingCart, Users, Truck, TicketPercent,
-  Palette, LayoutTemplate, Settings, Store as StoreIcon, ExternalLink,
+  Palette, LayoutTemplate, Settings, Store as StoreIcon, ExternalLink, Layout,
 } from "lucide-react";
 
 const NAV = [
@@ -18,6 +18,7 @@ const NAV = [
   { to: "/store/delivery", label: "Delivery", icon: Truck },
   { to: "/store/coupons", label: "Cupones", icon: TicketPercent },
   { to: "/store/theme", label: "Apariencia", icon: Palette },
+  { to: "/store/templates", label: "Templates", icon: Layout },
   { to: "/store/pages", label: "Páginas", icon: LayoutTemplate },
   { to: "/store/staff", label: "Equipo", icon: Users },
   { to: "/store/settings", label: "Configuración", icon: Settings },

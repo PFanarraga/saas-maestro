@@ -2,6 +2,7 @@
 import { sql, now, sanitizeText, isHexColor, BAD_REQUEST, camelize, camelizeAll, type Row } from "./db.ts";
 import { audit, getAccessContext, requireTenantMember, resolveTenantId } from "./auth.ts";
 import { DEFAULT_THEMES } from "./constants.ts";
+import { TemplateRegistry } from "./templates/registry.ts";
 
 // ---------------------------------------------------------------------------
 // Tenant settings
@@ -98,6 +99,7 @@ export async function getPublishedTheme(slug: string) {
       currency: tenant.currency ?? "PEN",
       seo: tenant.seo ?? null,
       logoUrl: tenant.logo_url ?? null,
+      activeTemplateId: tenant.active_template_id ?? 'shoply-minimal',
     },
   };
 }
@@ -126,13 +128,31 @@ export async function saveThemeDraft(req: Request, theme: Row) {
   return { id: created[0].id };
 }
 
-export async function applyTemplate(req: Request, template: string) {
+export async function applyTemplate(req: Request, templateId: string) {
   const access = await requireTenantMember(req);
   if (!access.tenantId) throw BAD_REQUEST("TENANT_REQUIRED");
   const tenantId = access.tenantId;
-  const key = template in DEFAULT_THEMES ? template : "minimal";
+
+  const template = TemplateRegistry.getById(templateId);
+  if (!template) throw BAD_REQUEST("TEMPLATE_NOT_FOUND");
+
   const tenants = await sql`select * from public.tenants where id = ${tenantId} limit 1`;
-  const theme = { ...DEFAULT_THEMES[key], brand: { ...DEFAULT_THEMES[key].brand, name: tenants[0]?.name } };
+  const tenant = tenants[0];
+
+  // 1. Update Tenant design metadata
+  await sql`
+    update public.tenants
+    set active_template_id = ${templateId},
+        active_preset_id = 'default'
+    where id = ${tenantId}
+  `;
+
+  // 2. Apply default theme for this template
+  const theme = {
+    ...template.defaultTheme,
+    brand: { ...template.defaultTheme.brand, name: tenant?.name }
+  };
+
   const drafts = await sql`select * from public.tenant_themes where tenant_id = ${tenantId} and status = 'draft' limit 1`;
   if (drafts[0]) {
     await sql`update public.tenant_themes set theme = ${JSON.stringify(theme)}::jsonb, updated_at = ${now()} where id = ${drafts[0].id}`;
@@ -140,6 +160,16 @@ export async function applyTemplate(req: Request, template: string) {
     await sql`insert into public.tenant_themes (tenant_id, status, version, theme, updated_at)
       values (${tenantId}, 'draft', 1, ${JSON.stringify(theme)}::jsonb, ${now()})`;
   }
+
+  // 3. Set initial blocks if it's a fresh template apply (optional logic)
+  // For now, let's keep it simple and just update the theme and metadata.
+  // In a real scenario, we might want to ask if they want to overwrite blocks.
+
+  await audit({
+    actorId: access.userId, actorLabel: access.user.email ?? "admin", tenantId,
+    action: "TEMPLATE_APPLIED", resource: "tenant", resourceId: tenantId, newData: { templateId },
+  });
+
   return { ok: true };
 }
 

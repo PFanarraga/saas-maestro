@@ -34,6 +34,7 @@ const AdminTheme = lazy(() => import("./pages/admin/ThemeEditor.tsx"));
 const AdminPages = lazy(() => import("./pages/admin/PageBuilder.tsx"));
 const AdminSettings = lazy(() => import("./pages/admin/StoreSettings.tsx"));
 const AdminStaff = lazy(() => import("./pages/admin/StaffManagement.tsx"));
+const AdminTemplates = lazy(() => import("./pages/admin/TemplateGallery.tsx"));
 const Storefront = lazy(() => import("./pages/storefront/Storefront.tsx"));
 const BuyerAuth = lazy(() => import("./pages/storefront/BuyerAuth.tsx"));
 const StoreHome = lazy(() => import("./pages/storefront/Home.tsx"));
@@ -160,6 +161,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="delivery" element={<AdminDelivery />} />
               <Route path="coupons" element={<AdminCoupons />} />
               <Route path="theme" element={<AdminTheme />} />
+              <Route path="templates" element={<AdminTemplates />} />
               <Route path="pages" element={<AdminPages />} />
               <Route path="settings" element={<AdminSettings />} />
               <Route path="staff" element={<AdminStaff />} />

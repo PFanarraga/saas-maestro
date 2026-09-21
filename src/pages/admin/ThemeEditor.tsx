@@ -8,8 +8,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Eye, Globe, Paintbrush, Save } from "lucide-react";
+import { Eye, Globe, Layout, Paintbrush, Save } from "lucide-react";
 import type { ThemeConfig } from "@/lib/utils-shared";
+import { Link } from "react-router";
 
 const COLOR_FIELDS: Array<{ key: keyof ThemeConfig["colors"]; label: string }> = [
   { key: "primary", label: "Primario" },
@@ -114,6 +115,11 @@ export default function ThemeEditor() {
               <Eye className="size-4 mr-1" /> Vista previa
             </Button>
           )}
+          <Button variant="outline" asChild>
+            <Link to="/store/templates">
+              <Layout className="size-4 mr-1" /> Explorar Templates
+            </Link>
+          </Button>
           <Button variant="outline" onClick={handleSave}><Save className="size-4 mr-1" /> Guardar borrador</Button>
           <Button onClick={handlePublish}><Globe className="size-4 mr-1" /> Publicar</Button>
         </div>
